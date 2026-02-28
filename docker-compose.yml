@@ -1,0 +1,31 @@
+services:
+  sotto:
+    build: ./server
+    ports:
+      - "8377:8377"
+    volumes:
+      - sotto-data:/data/sotto
+      - ./server/config.yaml.example:/data/sotto/config.yaml:ro
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    # GPU support: uncomment below if you have NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  sotto-data:
+  ollama-data:
