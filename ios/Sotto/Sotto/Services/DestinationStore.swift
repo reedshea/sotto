@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 class DestinationStore: ObservableObject {
     @Published var destination: Destination?

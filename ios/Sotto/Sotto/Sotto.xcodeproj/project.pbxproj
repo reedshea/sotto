@@ -7,14 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0012ADC62F5462C8009D79B6 /* Recording.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADC42F5462C8009D79B6 /* Recording.swift */; };
-		0012ADC72F5462C8009D79B6 /* Destination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADC32F5462C8009D79B6 /* Destination.swift */; };
-		0012ADCC2F5462D1009D79B6 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADC82F5462D1009D79B6 /* AudioRecorder.swift */; };
-		0012ADCD2F5462D1009D79B6 /* RecordingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADC92F5462D1009D79B6 /* RecordingStore.swift */; };
-		0012ADCE2F5462D1009D79B6 /* UploadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADCA2F5462D1009D79B6 /* UploadManager.swift */; };
-		0012ADD32F5462E0009D79B6 /* RecordingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADCF2F5462E0009D79B6 /* RecordingListView.swift */; };
-		0012ADD42F5462E0009D79B6 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADD12F5462E0009D79B6 /* WaveformView.swift */; };
-		0012ADD52F5462E0009D79B6 /* RecordingRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADD02F5462E0009D79B6 /* RecordingRow.swift */; };
 		0012ADD72F54631F009D79B6 /* SottoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012ADD62F54631F009D79B6 /* SottoApp.swift */; };
 /* End PBXBuildFile section */
 
@@ -39,14 +31,6 @@
 		0012AD972F5461EB009D79B6 /* Sotto Voice Notes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Sotto Voice Notes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADA62F5461EC009D79B6 /* SottoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SottoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADB02F5461EC009D79B6 /* SottoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SottoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		0012ADC32F5462C8009D79B6 /* Destination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Destination.swift; sourceTree = "<group>"; };
-		0012ADC42F5462C8009D79B6 /* Recording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recording.swift; sourceTree = "<group>"; };
-		0012ADC82F5462D1009D79B6 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
-		0012ADC92F5462D1009D79B6 /* RecordingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStore.swift; sourceTree = "<group>"; };
-		0012ADCA2F5462D1009D79B6 /* UploadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadManager.swift; sourceTree = "<group>"; };
-		0012ADCF2F5462E0009D79B6 /* RecordingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingListView.swift; sourceTree = "<group>"; };
-		0012ADD02F5462E0009D79B6 /* RecordingRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingRow.swift; sourceTree = "<group>"; };
-		0012ADD12F5462E0009D79B6 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
 		0012ADD62F54631F009D79B6 /* SottoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SottoApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -64,6 +48,21 @@
 		0012ADB32F5461EC009D79B6 /* SottoUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SottoUITests;
+			sourceTree = "<group>";
+		};
+		003B56EA2F546E5800636487 /* Views */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Views;
+			sourceTree = "<group>";
+		};
+		003B56F52F546E6900636487 /* Services */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Services;
+			sourceTree = "<group>";
+		};
+		003B56FC2F546E6C00636487 /* Models */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Models;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -97,9 +96,9 @@
 			isa = PBXGroup;
 			children = (
 				0012ADD62F54631F009D79B6 /* SottoApp.swift */,
-				0012ADD22F5462E0009D79B6 /* Views */,
-				0012ADCB2F5462D1009D79B6 /* Services */,
-				0012ADC52F5462C8009D79B6 /* Models */,
+				003B56EA2F546E5800636487 /* Views */,
+				003B56F52F546E6900636487 /* Services */,
+				003B56FC2F546E6C00636487 /* Models */,
 				0012AD992F5461EB009D79B6 /* Sotto */,
 				0012ADA92F5461EC009D79B6 /* SottoTests */,
 				0012ADB32F5461EC009D79B6 /* SottoUITests */,
@@ -115,35 +114,6 @@
 				0012ADB02F5461EC009D79B6 /* SottoUITests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		0012ADC52F5462C8009D79B6 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				0012ADC32F5462C8009D79B6 /* Destination.swift */,
-				0012ADC42F5462C8009D79B6 /* Recording.swift */,
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
-		0012ADCB2F5462D1009D79B6 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				0012ADC82F5462D1009D79B6 /* AudioRecorder.swift */,
-				0012ADC92F5462D1009D79B6 /* RecordingStore.swift */,
-				0012ADCA2F5462D1009D79B6 /* UploadManager.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		0012ADD22F5462E0009D79B6 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				0012ADCF2F5462E0009D79B6 /* RecordingListView.swift */,
-				0012ADD02F5462E0009D79B6 /* RecordingRow.swift */,
-				0012ADD12F5462E0009D79B6 /* WaveformView.swift */,
-			);
-			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -163,6 +133,9 @@
 			);
 			fileSystemSynchronizedGroups = (
 				0012AD992F5461EB009D79B6 /* Sotto */,
+				003B56EA2F546E5800636487 /* Views */,
+				003B56F52F546E6900636487 /* Services */,
+				003B56FC2F546E6C00636487 /* Models */,
 			);
 			name = "Sotto Voice Notes";
 			packageProductDependencies = (
@@ -290,15 +263,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0012ADC62F5462C8009D79B6 /* Recording.swift in Sources */,
-				0012ADC72F5462C8009D79B6 /* Destination.swift in Sources */,
 				0012ADD72F54631F009D79B6 /* SottoApp.swift in Sources */,
-				0012ADCC2F5462D1009D79B6 /* AudioRecorder.swift in Sources */,
-				0012ADCD2F5462D1009D79B6 /* RecordingStore.swift in Sources */,
-				0012ADCE2F5462D1009D79B6 /* UploadManager.swift in Sources */,
-				0012ADD32F5462E0009D79B6 /* RecordingListView.swift in Sources */,
-				0012ADD42F5462E0009D79B6 /* WaveformView.swift in Sources */,
-				0012ADD52F5462E0009D79B6 /* RecordingRow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
