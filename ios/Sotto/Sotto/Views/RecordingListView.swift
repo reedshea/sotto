@@ -2,8 +2,10 @@ import SwiftUI
 
 struct RecordingListView: View {
     @EnvironmentObject var store: RecordingStore
+    @EnvironmentObject var destinationStore: DestinationStore
     @StateObject private var recorder = AudioRecorder()
     @State private var selectedPrivacy: PrivacyMode = .standard
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -14,9 +16,19 @@ struct RecordingListView: View {
             }
             .navigationTitle("Sotto")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
                 ToolbarItem(placement: .bottomBar) {
                     recordButton
                 }
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
             }
             .overlay {
                 if store.recordings.isEmpty && !recorder.isRecording {
@@ -67,7 +79,7 @@ struct RecordingListView: View {
 
     private func stopRecording() {
         let duration = recorder.stopRecording()
-        let recording = Recording(
+        var recording = Recording(
             id: UUID(),
             capturedAt: Date(),
             duration: duration,
@@ -75,7 +87,14 @@ struct RecordingListView: View {
             status: .savedLocally,
             localFileURL: recorder.currentFileURL
         )
-        store.add(recording)
+
+        if let destination = destinationStore.destination {
+            recording.status = .uploading
+            store.add(recording)
+            UploadManager.shared.upload(recording: recording, destination: destination)
+        } else {
+            store.add(recording)
+        }
     }
 
     private func formatTime(_ time: TimeInterval) -> String {
