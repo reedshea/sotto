@@ -36,7 +36,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0012AD972F5461EB009D79B6 /* Sotto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sotto.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0012AD972F5461EB009D79B6 /* Sotto Voice Notes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Sotto Voice Notes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADA62F5461EC009D79B6 /* SottoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SottoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADB02F5461EC009D79B6 /* SottoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SottoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADC32F5462C8009D79B6 /* Destination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Destination.swift; sourceTree = "<group>"; };
@@ -110,7 +110,7 @@
 		0012AD982F5461EB009D79B6 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				0012AD972F5461EB009D79B6 /* Sotto.app */,
+				0012AD972F5461EB009D79B6 /* Sotto Voice Notes.app */,
 				0012ADA62F5461EC009D79B6 /* SottoTests.xctest */,
 				0012ADB02F5461EC009D79B6 /* SottoUITests.xctest */,
 			);
@@ -149,9 +149,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		0012AD962F5461EB009D79B6 /* Sotto */ = {
+		0012AD962F5461EB009D79B6 /* Sotto Voice Notes */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto" */;
+			buildConfigurationList = 0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto Voice Notes" */;
 			buildPhases = (
 				0012AD932F5461EB009D79B6 /* Sources */,
 				0012AD942F5461EB009D79B6 /* Frameworks */,
@@ -164,11 +164,11 @@
 			fileSystemSynchronizedGroups = (
 				0012AD992F5461EB009D79B6 /* Sotto */,
 			);
-			name = Sotto;
+			name = "Sotto Voice Notes";
 			packageProductDependencies = (
 			);
 			productName = Sotto;
-			productReference = 0012AD972F5461EB009D79B6 /* Sotto.app */;
+			productReference = 0012AD972F5461EB009D79B6 /* Sotto Voice Notes.app */;
 			productType = "com.apple.product-type.application";
 		};
 		0012ADA52F5461EC009D79B6 /* SottoTests */ = {
@@ -254,7 +254,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				0012AD962F5461EB009D79B6 /* Sotto */,
+				0012AD962F5461EB009D79B6 /* Sotto Voice Notes */,
 				0012ADA52F5461EC009D79B6 /* SottoTests */,
 				0012ADAF2F5461EC009D79B6 /* SottoUITests */,
 			);
@@ -321,12 +321,12 @@
 /* Begin PBXTargetDependency section */
 		0012ADA82F5461EC009D79B6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 0012AD962F5461EB009D79B6 /* Sotto */;
+			target = 0012AD962F5461EB009D79B6 /* Sotto Voice Notes */;
 			targetProxy = 0012ADA72F5461EC009D79B6 /* PBXContainerItemProxy */;
 		};
 		0012ADB22F5461EC009D79B6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 0012AD962F5461EB009D79B6 /* Sotto */;
+			target = 0012AD962F5461EB009D79B6 /* Sotto Voice Notes */;
 			targetProxy = 0012ADB12F5461EC009D79B6 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -385,6 +385,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -443,6 +444,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -615,7 +617,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto" */ = {
+		0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto Voice Notes" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				0012ADBB2F5461EC009D79B6 /* Debug */,
