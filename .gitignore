@@ -12,3 +12,4 @@ build/
 .env
 config.yaml
 .DS_Store
+ios/Sotto/Sotto/Sotto.xcodeproj/project.xcworkspace/xcuserdata/reed.xcuserdatad/UserInterfaceState.xcuserstate
