@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "sotto"
 version = "0.1.0"
 description = "Private voice transcription server — receive audio, transcribe locally, write clean text."
-readme = "../README.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
@@ -38,6 +38,10 @@ dev = [
     "httpx",
     "ruff>=0.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/reedshea/sotto"
+Repository = "https://github.com/reedshea/sotto"
 
 [project.scripts]
 sotto = "sotto.cli:main"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.resources
 import logging
 import shutil
 import signal
@@ -26,15 +27,15 @@ def cmd_init(args: argparse.Namespace) -> None:
         print("Use --force to overwrite.")
         return
 
-    # Copy the example config
-    example = Path(__file__).parent.parent / "config.yaml.example"
-    if not example.exists():
-        # Fallback: write a minimal config
-        dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    # Try to copy the bundled example config
+    try:
+        ref = importlib.resources.files("sotto").joinpath("config.yaml.example")
+        with importlib.resources.as_file(ref) as example:
+            shutil.copy(example, dest)
+    except (FileNotFoundError, TypeError):
         dest.write_text(_minimal_config(), encoding="utf-8")
-    else:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(example, dest)
 
     print(f"Config written to {dest}")
     print("Edit this file to set your API keys, model preferences, and output directory.")
