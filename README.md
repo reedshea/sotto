@@ -1,4 +1,4 @@
-# Sotto
+# Sotto 
 
 *Sotto voce: in a quiet voice.* Your words, captured reliably, processed privately.
 
