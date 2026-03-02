@@ -1,6 +1,7 @@
 """Tests for the FastAPI receiver endpoints."""
 
 import io
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 from sotto.config import AuthConfig, Config, StorageConfig
 from sotto.db import Database
 from sotto.receiver import app, init_app
+from sotto.worker import Worker
 
 
 @pytest.fixture
@@ -173,6 +175,79 @@ class TestListJobsEndpoint:
     def test_list_jobs_no_auth(self, client):
         response = client.get("/jobs")
         assert response.status_code == 401
+
+
+class TestSyncUpload:
+    """Tests for sync=true mode which blocks until transcription completes."""
+
+    @patch.object(Worker, "_transcribe")
+    @patch.object(Worker, "_generate_title_summary")
+    def test_sync_upload_returns_transcript(
+        self, mock_title, mock_transcribe, client, auth_header
+    ):
+        mock_transcribe.return_value = ("Hello world from dictation.", 3.5)
+        mock_title.return_value = ("Dictation Test", "A short dictation.")
+
+        response = client.post(
+            "/upload?sync=true",
+            files={"file": ("test.m4a", io.BytesIO(b"audio"), "audio/m4a")},
+            data={"privacy": "standard"},
+            headers=auth_header,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["transcript"] == "Hello world from dictation."
+        assert data["title"] == "Dictation Test"
+        assert data["summary"] == "A short dictation."
+        assert data["duration_seconds"] == 3.5
+
+    @patch.object(Worker, "_transcribe")
+    def test_sync_upload_transcribe_only(self, mock_transcribe, client, auth_header):
+        """sync + transcribe_only skips LLM and returns raw transcript."""
+        mock_transcribe.return_value = ("Quick note to self about the project.", 5.0)
+
+        response = client.post(
+            "/upload?sync=true&transcribe_only=true",
+            files={"file": ("test.m4a", io.BytesIO(b"audio"), "audio/m4a")},
+            data={"privacy": "standard"},
+            headers=auth_header,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["transcript"] == "Quick note to self about the project."
+        assert data["summary"] == ""
+        assert data["duration_seconds"] == 5.0
+        # Title should be auto-generated from transcript (no LLM)
+        assert data["title"] is not None
+
+    def test_async_upload_unchanged(self, client, auth_header):
+        """Default upload (no sync) still returns just uuid+status."""
+        response = client.post(
+            "/upload",
+            files={"file": ("test.m4a", io.BytesIO(b"audio"), "audio/m4a")},
+            data={"privacy": "standard"},
+            headers=auth_header,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "pending"
+        assert "transcript" not in data
+
+    def test_transcribe_only_stored_on_job(self, client, auth_header, test_db):
+        """transcribe_only flag is persisted on the job record."""
+        response = client.post(
+            "/upload?transcribe_only=true",
+            files={"file": ("test.m4a", io.BytesIO(b"audio"), "audio/m4a")},
+            data={"privacy": "standard"},
+            headers=auth_header,
+        )
+        assert response.status_code == 201
+        uuid = response.json()["uuid"]
+
+        job = test_db.get_job(uuid)
+        assert job.transcribe_only == 1
 
 
 class TestAuthWithNoTokens:
