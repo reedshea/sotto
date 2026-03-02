@@ -40,6 +40,80 @@ struct RecordingRow: View {
     }
 }
 
+// MARK: - Previews
+
+#Preview("Done — with summary") {
+    RecordingRow(recording: Recording(
+        id: UUID(),
+        capturedAt: Date(),
+        duration: 185,
+        privacyMode: .standard,
+        status: .done,
+        title: "Weekly standup notes",
+        summary: "Discussed sprint progress and blockers. Team agreed to push the release to next Friday."
+    ))
+    .padding()
+}
+
+#Preview("Uploading — private") {
+    RecordingRow(recording: Recording(
+        id: UUID(),
+        capturedAt: Date().addingTimeInterval(-3600),
+        duration: 42,
+        privacyMode: .private,
+        status: .uploading
+    ))
+    .padding()
+}
+
+#Preview("Transcribing") {
+    RecordingRow(recording: Recording(
+        id: UUID(),
+        capturedAt: Date().addingTimeInterval(-7200),
+        duration: 310,
+        privacyMode: .standard,
+        status: .transcribing,
+        title: "Product brainstorm"
+    ))
+    .padding()
+}
+
+#Preview("Upload failed") {
+    RecordingRow(recording: Recording(
+        id: UUID(),
+        capturedAt: Date().addingTimeInterval(-86400),
+        duration: 67,
+        privacyMode: .standard,
+        status: .uploadFailed
+    ))
+    .padding()
+}
+
+#Preview("Saved locally — no title") {
+    RecordingRow(recording: Recording(
+        id: UUID(),
+        capturedAt: Date(),
+        duration: 12,
+        privacyMode: .standard,
+        status: .savedLocally
+    ))
+    .padding()
+}
+
+#Preview("All status badges") {
+    VStack(spacing: 12) {
+        StatusBadge(status: .savedLocally)
+        StatusBadge(status: .uploading)
+        StatusBadge(status: .uploaded)
+        StatusBadge(status: .transcribing)
+        StatusBadge(status: .done)
+        StatusBadge(status: .uploadFailed)
+    }
+    .padding()
+}
+
+// MARK: - StatusBadge
+
 struct StatusBadge: View {
     let status: RecordingStatus
 
