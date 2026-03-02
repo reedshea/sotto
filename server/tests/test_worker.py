@@ -180,6 +180,65 @@ class TestProcessJob:
         assert job.status == "completed"
 
 
+class TestTranscribeOnlyMode:
+    @patch.object(Worker, "_transcribe")
+    def test_transcribe_only_skips_llm(self, mock_transcribe, worker, worker_config, worker_db):
+        """transcribe_only=True should never call LLM."""
+        mock_transcribe.return_value = ("Dictated text for clipboard.", 4.0)
+
+        create_fake_audio(worker_config, "dictation.m4a")
+        worker_db.insert_job(uuid="dictation", filename="dictation.m4a", privacy="standard")
+
+        with patch.object(Worker, "_generate_title_summary") as mock_llm:
+            worker.process_job("dictation", transcribe_only=True)
+            mock_llm.assert_not_called()
+
+        job = worker_db.get_job("dictation")
+        assert job.status == "completed"
+        assert job.transcript == "Dictated text for clipboard."
+        assert job.summary == ""
+        assert job.duration_seconds == 4.0
+
+    @patch.object(Worker, "_transcribe")
+    def test_transcribe_only_skips_summarizing_status(
+        self, mock_transcribe, worker, worker_config, worker_db
+    ):
+        """In transcribe_only mode, status should go pending -> transcribing -> completed (no summarizing)."""
+        statuses_seen = []
+        original_update = worker_db.update_status
+
+        def track_status(uuid, status):
+            statuses_seen.append(status)
+            original_update(uuid, status)
+
+        worker_db.update_status = track_status
+        mock_transcribe.return_value = ("Short dictation.", 2.0)
+
+        create_fake_audio(worker_config, "status-test.m4a")
+        worker_db.insert_job(uuid="status-test", filename="status-test.m4a")
+
+        worker.process_job("status-test", transcribe_only=True)
+
+        assert statuses_seen == ["transcribing"]
+        job = worker_db.get_job("status-test")
+        assert job.status == "completed"
+
+    @patch.object(Worker, "_transcribe")
+    def test_transcribe_only_auto_title(self, mock_transcribe, worker, worker_config, worker_db):
+        """Title should be auto-generated from transcript start."""
+        long_text = "A" * 100
+        mock_transcribe.return_value = (long_text, 10.0)
+
+        create_fake_audio(worker_config, "title-test.m4a")
+        worker_db.insert_job(uuid="title-test", filename="title-test.m4a")
+
+        worker.process_job("title-test", transcribe_only=True)
+
+        job = worker_db.get_job("title-test")
+        assert len(job.title) <= 63  # 60 chars + "..."
+        assert job.title.endswith("...")
+
+
 class TestWorkerRunLoop:
     @patch.object(Worker, "process_job")
     def test_run_processes_pending_jobs(self, mock_process, worker, worker_config, worker_db):
@@ -200,7 +259,7 @@ class TestWorkerRunLoop:
         worker.run(poll_interval=0.1)
         t.join()
 
-        mock_process.assert_called_with("run-test")
+        mock_process.assert_called_with("run-test", transcribe_only=False)
 
     def test_stop_flag(self, worker):
         """Calling stop() should set the running flag to False."""

@@ -5,11 +5,12 @@ from __future__ import annotations
 import uuid as uuid_lib
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from .config import Config, load_config
 from .db import Database
+from .worker import Worker
 
 app = FastAPI(title="Sotto", version="0.1.0")
 
@@ -57,11 +58,20 @@ def _check_auth(authorization: str | None, config: Config) -> None:
 async def upload_audio(
     file: UploadFile,
     privacy: str = Form(default="standard"),
+    sync: bool = Query(default=False),
+    transcribe_only: bool = Query(default=False),
     authorization: str | None = Header(default=None),
     config: Config = Depends(get_config),
     db: Database = Depends(get_db),
 ):
-    """Accept an audio file upload. Returns a UUID for tracking."""
+    """Accept an audio file upload.
+
+    Query params:
+        sync: If true, block until transcription completes and return the
+              transcript in the response. Ideal for short dictation clips.
+        transcribe_only: If true, skip LLM title/summary generation and
+              return only the raw transcript. Reduces latency significantly.
+    """
     _check_auth(authorization, config)
 
     if privacy not in ("private", "standard"):
@@ -77,7 +87,29 @@ async def upload_audio(
         while chunk := await file.read(1024 * 1024):
             f.write(chunk)
 
-    job = db.insert_job(uuid=job_uuid, filename=dest_filename, privacy=privacy)
+    job = db.insert_job(
+        uuid=job_uuid, filename=dest_filename, privacy=privacy,
+        transcribe_only=transcribe_only,
+    )
+
+    if sync:
+        # Process inline — block until transcription (and optionally summarization) finishes.
+        worker = Worker(config, db)
+        worker.process_job(job_uuid, transcribe_only=transcribe_only)
+
+        job = db.get_job(job_uuid)
+        return JSONResponse(
+            status_code=201,
+            content={
+                "uuid": job.uuid,
+                "status": job.status,
+                "transcript": job.transcript,
+                "title": job.title,
+                "summary": job.summary,
+                "duration_seconds": job.duration_seconds,
+                "error_message": job.error_message,
+            },
+        )
 
     return JSONResponse(
         status_code=201,

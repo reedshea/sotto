@@ -76,7 +76,7 @@ class Worker:
             jobs = self.db.get_pending_jobs()
             for job in jobs:
                 try:
-                    self.process_job(job.uuid)
+                    self.process_job(job.uuid, transcribe_only=bool(job.transcribe_only))
                 except Exception as e:
                     logger.exception("Failed to process job %s", job.uuid)
                     self.db.update_job_error(job.uuid, str(e))
@@ -86,8 +86,15 @@ class Worker:
     def stop(self) -> None:
         self._running = False
 
-    def process_job(self, uuid: str) -> None:
-        """Run the full pipeline for a single job."""
+    def process_job(self, uuid: str, transcribe_only: bool = False) -> None:
+        """Run the full pipeline for a single job.
+
+        Args:
+            uuid: The job UUID to process.
+            transcribe_only: If True, skip LLM title/summary generation.
+                Useful for low-latency dictation where only the raw
+                transcript is needed.
+        """
         job = self.db.get_job(uuid)
         if not job:
             logger.warning("Job %s not found", uuid)
@@ -112,17 +119,22 @@ class Worker:
         logger.info("Transcribing %s", uuid)
         transcript, duration = self._transcribe(audio_path)
 
-        # Step 2: Generate title and summary (graceful fallback if LLM fails)
-        self.db.update_status(uuid, "summarizing")
-        logger.info("Generating title/summary for %s", uuid)
+        # Step 2: Generate title and summary (skipped in transcribe_only mode)
         error_msg = None
-        try:
-            title, summary = self._generate_title_summary(transcript, pipeline)
-        except Exception as e:
-            logger.warning("LLM failed for %s: %s. Using fallback.", uuid, e)
-            title = transcript[:60].strip() + "..." if len(transcript) > 60 else transcript
+        if transcribe_only:
+            title = transcript[:60].strip() + ("..." if len(transcript) > 60 else "")
             summary = ""
-            error_msg = f"LLM summarization failed: {e}"
+            logger.info("Transcribe-only mode for %s, skipping LLM", uuid)
+        else:
+            self.db.update_status(uuid, "summarizing")
+            logger.info("Generating title/summary for %s", uuid)
+            try:
+                title, summary = self._generate_title_summary(transcript, pipeline)
+            except Exception as e:
+                logger.warning("LLM failed for %s: %s. Using fallback.", uuid, e)
+                title = transcript[:60].strip() + "..." if len(transcript) > 60 else transcript
+                summary = ""
+                error_msg = f"LLM summarization failed: {e}"
 
         # Step 3: Write output files
         output_path = self._write_output(uuid, job, transcript, title, summary, duration)

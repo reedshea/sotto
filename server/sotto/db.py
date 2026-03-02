@@ -25,6 +25,7 @@ class Job:
     duration_seconds: float | None = None
     error_message: str | None = None
     transcript: str | None = None
+    transcribe_only: int = 0
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> Job:
@@ -80,6 +81,7 @@ class Database:
         migrations = {
             "error_message": "ALTER TABLE jobs ADD COLUMN error_message TEXT",
             "transcript": "ALTER TABLE jobs ADD COLUMN transcript TEXT",
+            "transcribe_only": "ALTER TABLE jobs ADD COLUMN transcribe_only INTEGER NOT NULL DEFAULT 0",
         }
         for col, sql in migrations.items():
             if col not in existing:
@@ -93,12 +95,14 @@ class Database:
             self.connect()
         return self._conn
 
-    def insert_job(self, uuid: str, filename: str, privacy: str = "standard") -> Job:
+    def insert_job(
+        self, uuid: str, filename: str, privacy: str = "standard", transcribe_only: bool = False,
+    ) -> Job:
         now = datetime.now(timezone.utc).isoformat()
         self.conn.execute(
-            """INSERT INTO jobs (uuid, filename, status, privacy, created_at, updated_at)
-               VALUES (?, ?, 'pending', ?, ?, ?)""",
-            (uuid, filename, privacy, now, now),
+            """INSERT INTO jobs (uuid, filename, status, privacy, created_at, updated_at, transcribe_only)
+               VALUES (?, ?, 'pending', ?, ?, ?, ?)""",
+            (uuid, filename, privacy, now, now, int(transcribe_only)),
         )
         self.conn.commit()
         return self.get_job(uuid)
