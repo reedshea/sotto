@@ -61,6 +61,7 @@ struct StatusBadge: View {
         case .uploaded: "Uploaded"
         case .transcribing: "Transcribing"
         case .done: "Done"
+        case .failed: "Failed"
         case .uploadFailed: "Retry"
         }
     }
@@ -72,6 +73,7 @@ struct StatusBadge: View {
         case .uploaded: .blue
         case .transcribing: .orange
         case .done: .green
+        case .failed: .red
         case .uploadFailed: .red
         }
     }

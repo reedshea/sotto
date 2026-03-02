@@ -6,7 +6,19 @@ enum RecordingStatus: String, Codable {
     case uploaded
     case transcribing
     case done
+    case failed
     case uploadFailed = "upload_failed"
+
+    static func fromServer(_ status: String) -> RecordingStatus {
+        switch status {
+        case "pending":      return .uploaded
+        case "transcribing": return .transcribing
+        case "summarizing":  return .transcribing
+        case "completed":    return .done
+        case "failed":       return .failed
+        default:             return .uploaded
+        }
+    }
 }
 
 enum PrivacyMode: String, Codable {
