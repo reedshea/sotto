@@ -68,7 +68,8 @@ def cmd_start(args: argparse.Namespace) -> None:
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown)
+    if sys.platform != "win32":
+        signal.signal(signal.SIGTERM, shutdown)
 
     # Start uvicorn (blocks)
     uvicorn.run(
@@ -123,7 +124,7 @@ api_keys:
   anthropic: sk-...
 
 ollama:
-  endpoint: http://localhost:11434
+  endpoint: http://host.docker.internal:11434
 
 whisper:
   model: large-v3
