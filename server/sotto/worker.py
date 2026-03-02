@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +17,6 @@ from .db import Database
 
 logger = logging.getLogger("sotto.worker")
 
-# Prompt for the LLM title/summary step
 TITLE_SUMMARY_PROMPT = """You are processing a voice transcript. Given the following transcript, produce:
 1. A short, descriptive title (under 80 characters)
 2. A 1-2 sentence summary
@@ -34,6 +35,36 @@ class Worker:
         self.config = config
         self.db = db
         self._running = False
+        
+        # Windows-specific: Prepare CUDA DLLs if using GPU
+        if self.config.whisper.device == "cuda":
+            self._prepare_cuda_env()
+
+    def _prepare_cuda_env(self) -> None:
+        """Registers NVIDIA DLLs from pip packages on Windows to prevent cublas64_12.dll errors."""
+        if sys.platform != "win32":
+            return
+
+        import site
+        # Search in all potential site-packages locations (Standard + User)
+        search_paths = site.getsitepackages()
+        if site.getusersitepackages():
+            search_paths.append(site.getusersitepackages())
+        
+        found_binaries = False
+        for base_path in search_paths:
+            nvidia_root = Path(base_path) / "nvidia"
+            if nvidia_root.is_dir():
+                # We look for all 'bin' directories inside the nvidia package (cublas, cudnn, etc)
+                for bin_dir in nvidia_root.glob("**/bin"):
+                    if bin_dir.is_dir():
+                        # Python 3.8+ requires explicit registration of DLL directories
+                        os.add_dll_directory(str(bin_dir))
+                        logger.debug("Registered NVIDIA DLL directory: %s", bin_dir)
+                        found_binaries = True
+        
+        if not found_binaries:
+            logger.warning("CUDA requested, but no 'nvidia-*' pip packages found. Ensure they are installed.")
 
     def run(self, poll_interval: float = 2.0) -> None:
         """Poll for pending jobs and process them. Runs until stopped."""
@@ -102,24 +133,31 @@ class Worker:
         """Transcribe audio using faster-whisper. Returns (transcript, duration_seconds)."""
         from faster_whisper import WhisperModel
 
-        model = WhisperModel(
-            self.config.whisper.model,
-            device=self.config.whisper.device,
-            compute_type="float16" if self.config.whisper.device == "cuda" else "int8",
-        )
+        device = self.config.whisper.device
+        compute_type = "float16" if device == "cuda" else "int8"
+
+        try:
+            model = WhisperModel(
+                self.config.whisper.model,
+                device=device,
+                compute_type=compute_type,
+            )
+        except RuntimeError as e:
+            # Fallback to CPU if GPU libraries fail to load
+            if "library" in str(e).lower() and device == "cuda":
+                logger.error("CUDA failed (missing DLLs?). Falling back to CPU for this job.")
+                model = WhisperModel(self.config.whisper.model, device="cpu", compute_type="int8")
+            else:
+                raise e
 
         segments, info = model.transcribe(str(audio_path), beam_size=5)
-        text_parts = []
-        for segment in segments:
-            text_parts.append(segment.text.strip())
+        text_parts = [segment.text.strip() for segment in segments]
 
         transcript = " ".join(text_parts)
         return transcript, info.duration
 
-    def _generate_title_summary(
-        self, transcript: str, pipeline: PipelineConfig
-    ) -> tuple[str, str]:
-        """Generate a title and summary via LLM. Returns (title, summary)."""
+    def _generate_title_summary(self, transcript: str, pipeline: PipelineConfig) -> tuple[str, str]:
+        """Generate a title and summary via LLM."""
         prompt = TITLE_SUMMARY_PROMPT.format(transcript=transcript[:8000])
 
         if pipeline.llm_backend == "ollama":
@@ -129,7 +167,7 @@ class Worker:
         elif pipeline.llm_backend == "openai":
             return self._call_openai(prompt, pipeline.model)
         else:
-            logger.warning("Unknown LLM backend: %s, using transcript start as title", pipeline.llm_backend)
+            logger.warning("Unknown backend: %s, using fallback", pipeline.llm_backend)
             return transcript[:60] + "...", transcript[:150] + "..."
 
     def _call_ollama(self, prompt: str, model: str) -> tuple[str, str]:
@@ -191,7 +229,6 @@ class Worker:
     def _parse_title_summary(self, text: str) -> tuple[str, str]:
         """Extract title and summary from LLM JSON response."""
         try:
-            # Find the JSON object in the response
             start = text.index("{")
             end = text.rindex("}") + 1
             data = json.loads(text[start:end])
@@ -203,25 +240,15 @@ class Worker:
             summary = " ".join(lines[1:3])[:200] if len(lines) > 1 else ""
             return title, summary
 
-    def _write_output(
-        self,
-        uuid: str,
-        job,
-        transcript: str,
-        title: str,
-        summary: str,
-        duration: float,
-    ) -> Path:
-        """Write .txt and .json output files. Returns the output directory path."""
+    def _write_output(self, uuid: str, job, transcript: str, title: str, summary: str, duration: float) -> Path:
+        """Write .txt and .json output files."""
         now = datetime.now(timezone.utc)
         month_dir = self.config.storage.completed_dir / str(now.year) / f"{now.month:02d}"
         month_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write clean transcript
         txt_path = month_dir / f"{uuid}.txt"
         txt_path.write_text(transcript, encoding="utf-8")
 
-        # Write metadata JSON
         meta = {
             "uuid": uuid,
             "captured_at": job.created_at,
