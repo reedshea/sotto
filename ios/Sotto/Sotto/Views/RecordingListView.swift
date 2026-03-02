@@ -104,3 +104,62 @@ struct RecordingListView: View {
         return String(format: "%02d:%02d.%d", minutes, seconds, tenths)
     }
 }
+
+// MARK: - Previews
+
+#Preview("Empty state") {
+    RecordingListView()
+        .environmentObject(RecordingStore())
+        .environmentObject(DestinationStore())
+}
+
+#Preview("With recordings") {
+    let store = RecordingStore()
+    let sampleRecordings: [Recording] = [
+        Recording(
+            id: UUID(),
+            capturedAt: Date(),
+            duration: 185,
+            privacyMode: .standard,
+            status: .done,
+            title: "Weekly standup notes",
+            summary: "Discussed sprint progress and blockers. Team agreed to push the release to next Friday."
+        ),
+        Recording(
+            id: UUID(),
+            capturedAt: Date().addingTimeInterval(-3600),
+            duration: 42,
+            privacyMode: .private,
+            status: .transcribing,
+            title: "Voice memo"
+        ),
+        Recording(
+            id: UUID(),
+            capturedAt: Date().addingTimeInterval(-7200),
+            duration: 310,
+            privacyMode: .standard,
+            status: .uploading
+        ),
+        Recording(
+            id: UUID(),
+            capturedAt: Date().addingTimeInterval(-86400),
+            duration: 67,
+            privacyMode: .standard,
+            status: .uploadFailed
+        ),
+        Recording(
+            id: UUID(),
+            capturedAt: Date().addingTimeInterval(-172800),
+            duration: 540,
+            privacyMode: .private,
+            status: .done,
+            title: "Client call — Acme Corp",
+            summary: "Reviewed contract terms. They want to move forward with the enterprise plan."
+        ),
+    ]
+    for r in sampleRecordings { store.add(r) }
+
+    return RecordingListView()
+        .environmentObject(store)
+        .environmentObject(DestinationStore())
+}

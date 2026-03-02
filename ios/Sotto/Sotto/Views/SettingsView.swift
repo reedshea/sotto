@@ -83,3 +83,22 @@ struct SettingsView: View {
         !name.isEmpty && !url.isEmpty && !keySecret.isEmpty
     }
 }
+
+// MARK: - Previews
+
+#Preview("Settings — empty") {
+    SettingsView()
+        .environmentObject(DestinationStore())
+}
+
+#Preview("Settings — configured") {
+    let store = DestinationStore()
+    store.save(Destination(
+        name: "My Server",
+        url: "https://api.example.com/v1",
+        keyID: "key_abc123",
+        keySecret: "sk_secret_xyz"
+    ))
+    return SettingsView()
+        .environmentObject(store)
+}
