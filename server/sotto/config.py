@@ -21,7 +21,9 @@ class WhisperConfig:
 
 @dataclass
 class OllamaConfig:
-    endpoint: str = "http://localhost:11434"
+    # Default assumes Ollama runs on the Docker host.
+    # Override with SOTTO_OLLAMA_ENDPOINT or in config.yaml.
+    endpoint: str = "http://host.docker.internal:11434"
 
 
 @dataclass
@@ -107,6 +109,8 @@ def load_config(path: Path | None = None) -> Config:
 
     api_keys = raw.get("api_keys", {})
     ollama = OllamaConfig(**raw.get("ollama", {}))
+    if env_ollama := os.environ.get("SOTTO_OLLAMA_ENDPOINT"):
+        ollama.endpoint = env_ollama
     whisper = WhisperConfig(**raw.get("whisper", {}))
     server = ServerConfig(**raw.get("server", {}))
     auth = AuthConfig(**raw.get("auth", {}))
