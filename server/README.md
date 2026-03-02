@@ -79,6 +79,15 @@ For each completed job, two files are written to `output_dir/completed/YYYY/MM/`
 - Anthropic API key (for standard pipeline)
 - CUDA-capable GPU recommended for Whisper transcription
 
+## Releases & CI/CD
+This project uses a monorepo structure with automated deployments triggered by git tags:
+
+* **iOS (TestFlight):** Push a tag starting with ios-v (e.g., git tag ios-v1.0.0) to trigger Xcode Cloud builds.
+
+* **Python (PyPI):** Push a tag starting with py-v (e.g., git tag py-v1.0.0) to trigger the GitHub Actions publishing workflow.
+
+Note: Ensure you increment the version number in pyproject.toml before tagging to avoid "Version Already Exists" errors.
+
 ## License
 
 MIT — Built by Reed Shea. Open source. Private by design.
