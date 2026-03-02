@@ -4,7 +4,7 @@
 
 Sotto is a lightweight Python server that receives audio uploads, transcribes them locally with Whisper, generates a short title and summary via LLM, and writes clean text output to a configurable location.
 
-Designed to run on hardware you control. Pairs with the [Sotto iOS app](https://github.com/reedshea/sotto) for reliable voice capture.
+Designed to run on hardware you control. Pairs with the [`sotto mobi` iOS app](https://github.com/reedshea/sotto/ios) for reliable voice capture.
 
 ## Quickstart
 

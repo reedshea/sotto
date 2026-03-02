@@ -28,7 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0012AD972F5461EB009D79B6 /* Sotto Voice Notes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Sotto Voice Notes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		0012AD972F5461EB009D79B6 /* Sotto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sotto.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADA62F5461EC009D79B6 /* SottoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SottoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADB02F5461EC009D79B6 /* SottoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SottoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0012ADD62F54631F009D79B6 /* SottoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SottoApp.swift; sourceTree = "<group>"; };
@@ -109,7 +109,7 @@
 		0012AD982F5461EB009D79B6 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				0012AD972F5461EB009D79B6 /* Sotto Voice Notes.app */,
+				0012AD972F5461EB009D79B6 /* Sotto.app */,
 				0012ADA62F5461EC009D79B6 /* SottoTests.xctest */,
 				0012ADB02F5461EC009D79B6 /* SottoUITests.xctest */,
 			);
@@ -119,9 +119,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		0012AD962F5461EB009D79B6 /* Sotto Voice Notes */ = {
+		0012AD962F5461EB009D79B6 /* Sotto */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto Voice Notes" */;
+			buildConfigurationList = 0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto" */;
 			buildPhases = (
 				0012AD932F5461EB009D79B6 /* Sources */,
 				0012AD942F5461EB009D79B6 /* Frameworks */,
@@ -137,11 +137,11 @@
 				003B56F52F546E6900636487 /* Services */,
 				003B56FC2F546E6C00636487 /* Models */,
 			);
-			name = "Sotto Voice Notes";
+			name = Sotto;
 			packageProductDependencies = (
 			);
 			productName = Sotto;
-			productReference = 0012AD972F5461EB009D79B6 /* Sotto Voice Notes.app */;
+			productReference = 0012AD972F5461EB009D79B6 /* Sotto.app */;
 			productType = "com.apple.product-type.application";
 		};
 		0012ADA52F5461EC009D79B6 /* SottoTests */ = {
@@ -227,7 +227,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				0012AD962F5461EB009D79B6 /* Sotto Voice Notes */,
+				0012AD962F5461EB009D79B6 /* Sotto */,
 				0012ADA52F5461EC009D79B6 /* SottoTests */,
 				0012ADAF2F5461EC009D79B6 /* SottoUITests */,
 			);
@@ -286,12 +286,12 @@
 /* Begin PBXTargetDependency section */
 		0012ADA82F5461EC009D79B6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 0012AD962F5461EB009D79B6 /* Sotto Voice Notes */;
+			target = 0012AD962F5461EB009D79B6 /* Sotto */;
 			targetProxy = 0012ADA72F5461EC009D79B6 /* PBXContainerItemProxy */;
 		};
 		0012ADB22F5461EC009D79B6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 0012AD962F5461EB009D79B6 /* Sotto Voice Notes */;
+			target = 0012AD962F5461EB009D79B6 /* Sotto */;
 			targetProxy = 0012ADB12F5461EC009D79B6 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -430,7 +430,7 @@
 				DEVELOPMENT_TEAM = K7B93KQHJT;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_CFBundleDisplayName = "sotto mobi";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs microphone access to record voice notes.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -438,7 +438,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -466,14 +466,14 @@
 				DEVELOPMENT_TEAM = K7B93KQHJT;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "";
+				INFOPLIST_KEY_CFBundleDisplayName = "sotto mobi";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Sotto needs microphone access to record voice notes. asdf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -587,7 +587,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto Voice Notes" */ = {
+		0012ADBA2F5461EC009D79B6 /* Build configuration list for PBXNativeTarget "Sotto" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				0012ADBB2F5461EC009D79B6 /* Debug */,

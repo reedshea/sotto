@@ -16,8 +16,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "0012AD962F5461EB009D79B6"
-               BuildableName = "Sotto Voice Notes.app"
-               BlueprintName = "Sotto Voice Notes"
+               BuildableName = "Sotto.app"
+               BlueprintName = "Sotto"
                ReferencedContainer = "container:Sotto.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -69,8 +69,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0012AD962F5461EB009D79B6"
-            BuildableName = "Sotto Voice Notes.app"
-            BlueprintName = "Sotto Voice Notes"
+            BuildableName = "Sotto.app"
+            BlueprintName = "Sotto"
             ReferencedContainer = "container:Sotto.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -86,8 +86,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0012AD962F5461EB009D79B6"
-            BuildableName = "Sotto Voice Notes.app"
-            BlueprintName = "Sotto Voice Notes"
+            BuildableName = "Sotto.app"
+            BlueprintName = "Sotto"
             ReferencedContainer = "container:Sotto.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
