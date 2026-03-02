@@ -50,21 +50,22 @@ class Worker:
         search_paths = site.getsitepackages()
         if site.getusersitepackages():
             search_paths.append(site.getusersitepackages())
-        
+
         found_binaries = False
         for base_path in search_paths:
             nvidia_root = Path(base_path) / "nvidia"
             if nvidia_root.is_dir():
-                # We look for all 'bin' directories inside the nvidia package (cublas, cudnn, etc)
                 for bin_dir in nvidia_root.glob("**/bin"):
                     if bin_dir.is_dir():
-                        # Python 3.8+ requires explicit registration of DLL directories
+                        # PATH is needed because CTranslate2 loads cublas via
+                        # standard DLL search, not AddDllDirectory.
+                        os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
                         os.add_dll_directory(str(bin_dir))
                         logger.debug("Registered NVIDIA DLL directory: %s", bin_dir)
                         found_binaries = True
-        
+
         if not found_binaries:
-            logger.warning("CUDA requested, but no 'nvidia-*' pip packages found. Ensure they are installed.")
+            logger.warning("CUDA requested, but no 'nvidia-*' pip packages found.")
 
     def run(self, poll_interval: float = 2.0) -> None:
         """Poll for pending jobs and process them. Runs until stopped."""
@@ -76,9 +77,9 @@ class Worker:
             for job in jobs:
                 try:
                     self.process_job(job.uuid)
-                except Exception:
+                except Exception as e:
                     logger.exception("Failed to process job %s", job.uuid)
-                    self.db.update_status(job.uuid, "failed")
+                    self.db.update_job_error(job.uuid, str(e))
 
             time.sleep(poll_interval)
 
@@ -96,14 +97,14 @@ class Worker:
         pipeline = self.config.pipelines.get(pipeline_name)
         if not pipeline:
             logger.error("No pipeline configured for privacy=%s", pipeline_name)
-            self.db.update_status(uuid, "failed")
+            self.db.update_job_error(uuid, f"No pipeline configured for privacy={pipeline_name}")
             return
 
         audio_path = self.config.storage.incoming_dir / job.filename
 
         if not audio_path.exists():
             logger.error("Audio file missing: %s", audio_path)
-            self.db.update_status(uuid, "failed")
+            self.db.update_job_error(uuid, f"Audio file missing: {audio_path}")
             return
 
         # Step 1: Transcribe
@@ -111,23 +112,35 @@ class Worker:
         logger.info("Transcribing %s", uuid)
         transcript, duration = self._transcribe(audio_path)
 
-        # Step 2: Generate title and summary
+        # Step 2: Generate title and summary (graceful fallback if LLM fails)
         self.db.update_status(uuid, "summarizing")
         logger.info("Generating title/summary for %s", uuid)
-        title, summary = self._generate_title_summary(transcript, pipeline)
+        error_msg = None
+        try:
+            title, summary = self._generate_title_summary(transcript, pipeline)
+        except Exception as e:
+            logger.warning("LLM failed for %s: %s. Using fallback.", uuid, e)
+            title = transcript[:60].strip() + "..." if len(transcript) > 60 else transcript
+            summary = ""
+            error_msg = f"LLM summarization failed: {e}"
 
         # Step 3: Write output files
         output_path = self._write_output(uuid, job, transcript, title, summary, duration)
 
-        # Step 4: Mark complete
+        # Step 4: Mark complete (transcript is always saved, even if LLM failed)
         self.db.update_job_result(
             uuid=uuid,
             title=title,
             summary=summary,
             output_path=str(output_path),
             duration_seconds=duration,
+            transcript=transcript,
+            error_message=error_msg,
         )
-        logger.info("Completed %s: %s", uuid, title)
+        if error_msg:
+            logger.info("Completed %s with LLM fallback: %s", uuid, title)
+        else:
+            logger.info("Completed %s: %s", uuid, title)
 
     def _transcribe(self, audio_path: Path) -> tuple[str, float]:
         """Transcribe audio using faster-whisper. Returns (transcript, duration_seconds)."""

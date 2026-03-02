@@ -12,7 +12,7 @@ pipelines:
   private:
     transcription: local         # Always Whisper
     llm_backend: ollama
-    model: llama3.1:34b
+    model: llama3.1:8b
 
   standard:
     transcription: local         # Always Whisper

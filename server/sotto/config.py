@@ -30,7 +30,7 @@ class OllamaConfig:
 class PipelineConfig:
     transcription: str = "local"
     llm_backend: str = "ollama"
-    model: str = "llama3.1:34b"
+    model: str = "llama3.1:8b"
 
 
 @dataclass
@@ -75,7 +75,7 @@ class Config:
         if not self.pipelines:
             self.pipelines = {
                 "private": PipelineConfig(
-                    transcription="local", llm_backend="ollama", model="llama3.1:34b"
+                    transcription="local", llm_backend="ollama", model="llama3.1:8b"
                 ),
                 "standard": PipelineConfig(
                     transcription="local", llm_backend="anthropic", model="claude-sonnet-4-6"

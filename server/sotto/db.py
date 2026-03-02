@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger("sotto.db")
 
 
 @dataclass
@@ -20,6 +23,8 @@ class Job:
     summary: str | None = None
     output_path: str | None = None
     duration_seconds: float | None = None
+    error_message: str | None = None
+    transcript: str | None = None
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> Job:
@@ -46,6 +51,7 @@ class Database:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_tables()
+        self._migrate()
 
     def _create_tables(self) -> None:
         self._conn.execute("""
@@ -59,9 +65,26 @@ class Database:
                 title TEXT,
                 summary TEXT,
                 output_path TEXT,
-                duration_seconds REAL
+                duration_seconds REAL,
+                error_message TEXT,
+                transcript TEXT
             )
         """)
+        self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns that may be missing from older databases."""
+        existing = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()
+        }
+        migrations = {
+            "error_message": "ALTER TABLE jobs ADD COLUMN error_message TEXT",
+            "transcript": "ALTER TABLE jobs ADD COLUMN transcript TEXT",
+        }
+        for col, sql in migrations.items():
+            if col not in existing:
+                logger.info("Migrating DB: adding '%s' column", col)
+                self._conn.execute(sql)
         self._conn.commit()
 
     @property
@@ -100,6 +123,15 @@ class Database:
         )
         self.conn.commit()
 
+    def update_job_error(self, uuid: str, error_message: str) -> None:
+        """Mark a job as failed and store the error message."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE jobs SET status = 'failed', error_message = ?, updated_at = ? WHERE uuid = ?",
+            (error_message, now, uuid),
+        )
+        self.conn.commit()
+
     def update_job_result(
         self,
         uuid: str,
@@ -107,14 +139,16 @@ class Database:
         summary: str,
         output_path: str,
         duration_seconds: float | None = None,
+        transcript: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
         self.conn.execute(
             """UPDATE jobs
                SET status = 'completed', title = ?, summary = ?, output_path = ?,
-                   duration_seconds = ?, updated_at = ?
+                   duration_seconds = ?, transcript = ?, error_message = ?, updated_at = ?
                WHERE uuid = ?""",
-            (title, summary, output_path, duration_seconds, now, uuid),
+            (title, summary, output_path, duration_seconds, transcript, error_message, now, uuid),
         )
         self.conn.commit()
 

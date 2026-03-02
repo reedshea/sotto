@@ -109,6 +109,9 @@ async def get_job_status(
         "created_at": job.created_at,
         "title": job.title,
         "summary": job.summary,
+        "transcript": job.transcript,
+        "duration_seconds": job.duration_seconds,
+        "error_message": job.error_message,
     }
     return result
 
@@ -134,6 +137,7 @@ async def list_jobs(
             "title": j.title,
             "summary": j.summary,
             "duration_seconds": j.duration_seconds,
+            "error_message": j.error_message,
         }
         for j in jobs
     ]
