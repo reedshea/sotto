@@ -3,6 +3,7 @@ import SwiftUI
 struct RecordingListView: View {
     @EnvironmentObject var store: RecordingStore
     @EnvironmentObject var destinationStore: DestinationStore
+    @EnvironmentObject var poller: JobPoller
     @StateObject private var recorder = AudioRecorder()
     @State private var selectedPrivacy: PrivacyMode = .standard
     @State private var showingSettings = false
@@ -88,12 +89,29 @@ struct RecordingListView: View {
             localFileURL: recorder.currentFileURL
         )
 
-        if let destination = destinationStore.destination {
-            recording.status = .uploading
+        guard let destination = destinationStore.destination else {
             store.add(recording)
-            UploadManager.shared.upload(recording: recording, destination: destination)
-        } else {
-            store.add(recording)
+            return
+        }
+
+        recording.status = .uploading
+        store.add(recording)
+
+        Task {
+            do {
+                let resp = try await UploadManager.shared.upload(
+                    recording: recording, destination: destination
+                )
+                var updated = recording
+                updated.serverUUID = resp.uuid
+                updated.status = .uploaded
+                store.update(updated)
+                poller.startIfNeeded()
+            } catch {
+                var updated = recording
+                updated.status = .uploadFailed
+                store.update(updated)
+            }
         }
     }
 

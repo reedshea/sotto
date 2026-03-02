@@ -1,18 +1,17 @@
 import Foundation
-import Combine
 
-class UploadManager: ObservableObject {
+struct UploadResponse: Decodable {
+    let uuid: String
+    let status: String
+}
+
+class UploadManager {
     static let shared = UploadManager()
 
-    private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: "com.sotto.upload")
-        config.isDiscretionary = false
-        config.sessionSendsLaunchEvents = true
-        return URLSession(configuration: config, delegate: nil, delegateQueue: nil)
-    }()
-
-    func upload(recording: Recording, destination: Destination) {
-        guard let fileURL = recording.localFileURL else { return }
+    func upload(recording: Recording, destination: Destination) async throws -> UploadResponse {
+        guard let fileURL = recording.localFileURL else {
+            throw URLError(.fileDoesNotExist)
+        }
 
         var request = URLRequest(url: URL(string: "\(destination.url)/upload")!)
         request.httpMethod = "POST"
@@ -21,7 +20,6 @@ class UploadManager: ObservableObject {
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         var body = Data()
 
         // Privacy field
@@ -38,8 +36,12 @@ class UploadManager: ObservableObject {
         }
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
 
-        try? body.write(to: tempURL)
+        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
 
-        session.uploadTask(with: request, fromFile: tempURL).resume()
+        guard let http = response as? HTTPURLResponse, http.statusCode == 201 else {
+            throw URLError(.badServerResponse)
+        }
+
+        return try JSONDecoder().decode(UploadResponse.self, from: data)
     }
 }
