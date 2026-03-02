@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import tempfile
 import uuid as uuid_lib
 from pathlib import Path
 
@@ -11,10 +13,13 @@ from fastapi.responses import JSONResponse
 from .config import Config, load_config
 from .db import Database
 
+logger = logging.getLogger("sotto.receiver")
+
 app = FastAPI(title="Sotto", version="0.1.0")
 
 _config: Config | None = None
 _db: Database | None = None
+_whisper_model = None
 
 
 def get_config() -> Config:
@@ -141,6 +146,62 @@ async def list_jobs(
         }
         for j in jobs
     ]
+
+
+def _get_whisper_model(config: Config):
+    """Lazy-load and cache the Whisper model for sync transcription."""
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel
+
+        device = config.whisper.device
+        compute_type = "float16" if device == "cuda" else "int8"
+        try:
+            _whisper_model = WhisperModel(
+                config.whisper.model, device=device, compute_type=compute_type
+            )
+        except RuntimeError as e:
+            if "library" in str(e).lower() and device == "cuda":
+                logger.warning("CUDA failed, falling back to CPU for Whisper model")
+                _whisper_model = WhisperModel(
+                    config.whisper.model, device="cpu", compute_type="int8"
+                )
+            else:
+                raise
+        logger.info("Whisper model loaded: %s on %s", config.whisper.model, device)
+    return _whisper_model
+
+
+@app.post("/transcribe")
+async def transcribe_sync(
+    file: UploadFile,
+    authorization: str | None = Header(default=None),
+    config: Config = Depends(get_config),
+):
+    """Synchronous transcribe-only endpoint. Accepts audio, returns transcript immediately.
+
+    Designed for low-latency dictation — no LLM summarization, no job queue.
+    """
+    _check_auth(authorization, config)
+
+    suffix = Path(file.filename).suffix if file.filename else ".m4a"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
+
+    try:
+        model = _get_whisper_model(config)
+        segments, info = model.transcribe(str(tmp_path), beam_size=5)
+        text_parts = [segment.text.strip() for segment in segments]
+        transcript = " ".join(text_parts)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return {
+        "text": transcript,
+        "duration_seconds": info.duration,
+    }
 
 
 @app.get("/health")
