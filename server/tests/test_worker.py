@@ -6,8 +6,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sotto.config import Config, OllamaConfig, PipelineConfig, StorageConfig, WhisperConfig
+from sotto.classifier import Classifier, ClassificationResult
+from sotto.config import Config, DestinationsConfig, OllamaConfig, PipelineConfig, StorageConfig, WhisperConfig
 from sotto.db import Database
+from sotto.dispatcher import Dispatcher
 from sotto.worker import Worker
 
 
@@ -26,6 +28,7 @@ def worker_config(tmp_path):
         api_keys={"anthropic": "test-key"},
         ollama=OllamaConfig(endpoint="http://localhost:11434"),
         whisper=WhisperConfig(model="tiny", device="cpu"),
+        destinations=DestinationsConfig(obsidian_vault=str(tmp_path / "vault")),
     )
 
 
@@ -76,12 +79,15 @@ class TestParseTitleSummary:
 
 
 class TestProcessJob:
+    @patch.object(Dispatcher, "dispatch", return_value={"action": "filed_to_inbox"})
+    @patch.object(Classifier, "classify", return_value=ClassificationResult(intent="general"))
     @patch.object(Worker, "_transcribe")
     @patch.object(Worker, "_generate_title_summary")
     def test_process_job_success(
-        self, mock_title, mock_transcribe, worker, worker_config, worker_db
+        self, mock_title, mock_transcribe, mock_classify, mock_dispatch,
+        worker, worker_config, worker_db,
     ):
-        """Full pipeline with mocked transcription and LLM."""
+        """Full pipeline with mocked transcription, classification, and LLM."""
         mock_transcribe.return_value = ("This is the transcript text.", 45.0)
         mock_title.return_value = ("Test Recording Title", "A test recording about something.")
 
@@ -96,11 +102,15 @@ class TestProcessJob:
         assert job.title == "Test Recording Title"
         assert job.summary == "A test recording about something."
         assert job.duration_seconds == 45.0
+        assert job.intent == "general"
 
+    @patch.object(Dispatcher, "dispatch", return_value={"action": "filed_to_inbox"})
+    @patch.object(Classifier, "classify", return_value=ClassificationResult(intent="general"))
     @patch.object(Worker, "_transcribe")
     @patch.object(Worker, "_generate_title_summary")
     def test_process_job_writes_output_files(
-        self, mock_title, mock_transcribe, worker, worker_config, worker_db
+        self, mock_title, mock_transcribe, mock_classify, mock_dispatch,
+        worker, worker_config, worker_db,
     ):
         """Verify .txt and .json output files are written."""
         transcript = "Hello, this is a test transcript."
@@ -150,10 +160,13 @@ class TestProcessJob:
         job = worker_db.get_job("no-pipeline")
         assert job.status == "failed"
 
+    @patch.object(Dispatcher, "dispatch", return_value={"action": "filed_to_inbox"})
+    @patch.object(Classifier, "classify", return_value=ClassificationResult(intent="general"))
     @patch.object(Worker, "_transcribe")
     @patch.object(Worker, "_generate_title_summary")
     def test_process_job_status_transitions(
-        self, mock_title, mock_transcribe, worker, worker_config, worker_db
+        self, mock_title, mock_transcribe, mock_classify, mock_dispatch,
+        worker, worker_config, worker_db,
     ):
         """Verify the job goes through correct status transitions."""
         statuses_seen = []
@@ -174,7 +187,7 @@ class TestProcessJob:
 
         worker.process_job("transition")
 
-        assert statuses_seen == ["transcribing", "summarizing"]
+        assert statuses_seen == ["transcribing", "classifying", "summarizing", "dispatching"]
         # Final status set via update_job_result
         job = worker_db.get_job("transition")
         assert job.status == "completed"

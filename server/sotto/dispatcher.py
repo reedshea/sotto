@@ -1,0 +1,442 @@
+"""Dispatcher — routes classified transcriptions to their output destinations.
+
+After a transcript is classified by intent, the dispatcher determines what to do
+with it: write Obsidian-formatted markdown, generate a draft via Claude, extract
+tasks, append to a journal, etc.
+
+Output destinations are organized for Obsidian vault consumption:
+  vault_root/
+    inbox/          <- items needing review
+    notes/          <- note_to_self
+    meetings/       <- meeting_debrief
+    journal/        <- daily journal entries (appended)
+    drafts/         <- draft_request outputs (Claude-generated)
+    ideas/          <- idea captures
+    tasks/          <- extracted action items
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+
+import httpx
+
+from .classifier import ClassificationResult
+from .config import Config, PipelineConfig
+
+logger = logging.getLogger("sotto.dispatcher")
+
+
+class Dispatcher:
+    """Routes completed, classified transcriptions to output destinations."""
+
+    def __init__(self, config: Config):
+        self.config = config
+        self._vault_root = self._resolve_vault_root()
+
+    def _resolve_vault_root(self) -> Path:
+        """Determine the Obsidian vault output root from config."""
+        destinations = getattr(self.config, "destinations", None)
+        if destinations and hasattr(destinations, "obsidian_vault"):
+            return Path(destinations.obsidian_vault).expanduser()
+        # Default: output_dir/vault
+        return self.config.storage.output_dir / "vault"
+
+    def dispatch(
+        self,
+        uuid: str,
+        transcript: str,
+        classification: ClassificationResult,
+        title: str,
+        summary: str,
+        duration: float,
+        privacy: str,
+        pipeline: PipelineConfig,
+        created_at: str,
+    ) -> dict:
+        """Dispatch a classified transcript to the appropriate handler.
+
+        Returns a dict with dispatch results (paths written, actions taken).
+        """
+        intent = classification.intent
+        now = datetime.now(timezone.utc)
+
+        handler = {
+            "note_to_self": self._handle_note,
+            "meeting_debrief": self._handle_meeting,
+            "journal": self._handle_journal,
+            "draft_request": self._handle_draft_request,
+            "task": self._handle_task,
+            "idea": self._handle_idea,
+            "general": self._handle_general,
+        }.get(intent, self._handle_general)
+
+        try:
+            result = handler(
+                uuid=uuid,
+                transcript=transcript,
+                classification=classification,
+                title=title,
+                summary=summary,
+                duration=duration,
+                privacy=privacy,
+                pipeline=pipeline,
+                created_at=created_at,
+                now=now,
+            )
+            result["intent"] = intent
+            result["dispatched_at"] = now.isoformat()
+            logger.info("Dispatched %s as '%s' -> %s", uuid, intent, result.get("path", "n/a"))
+            return result
+        except Exception as e:
+            logger.exception("Dispatch failed for %s", uuid)
+            return {"intent": intent, "error": str(e), "dispatched_at": now.isoformat()}
+
+    # ------------------------------------------------------------------
+    # Intent handlers
+    # ------------------------------------------------------------------
+
+    def _handle_note(self, **kwargs) -> dict:
+        """Write a note-to-self as an Obsidian markdown file."""
+        dest_dir = self._vault_root / "notes"
+        path = self._write_markdown(dest_dir, **kwargs)
+        return {"path": str(path), "action": "note_created"}
+
+    def _handle_meeting(self, **kwargs) -> dict:
+        """Write meeting debrief as structured markdown."""
+        dest_dir = self._vault_root / "meetings"
+        path = self._write_markdown(dest_dir, **kwargs)
+        return {"path": str(path), "action": "meeting_notes_created"}
+
+    def _handle_journal(self, **kwargs) -> dict:
+        """Append to a daily journal file."""
+        dest_dir = self._vault_root / "journal"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        now = kwargs["now"]
+        date_str = now.strftime("%Y-%m-%d")
+        journal_path = dest_dir / f"{date_str}.md"
+
+        entry = self._format_journal_entry(**kwargs)
+
+        if journal_path.exists():
+            existing = journal_path.read_text(encoding="utf-8")
+            journal_path.write_text(existing + "\n\n---\n\n" + entry, encoding="utf-8")
+        else:
+            header = f"# Journal — {date_str}\n\n"
+            journal_path.write_text(header + entry, encoding="utf-8")
+
+        return {"path": str(journal_path), "action": "journal_appended"}
+
+    def _handle_draft_request(self, **kwargs) -> dict:
+        """Send transcript to Claude for drafting, save result as markdown."""
+        dest_dir = self._vault_root / "drafts"
+        transcript = kwargs["transcript"]
+        classification = kwargs["classification"]
+        pipeline = kwargs["pipeline"]
+        uuid = kwargs["uuid"]
+
+        # Generate the draft using Claude
+        draft = self._generate_draft(transcript, classification, pipeline)
+
+        # Write both the original request and the draft
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        now = kwargs["now"]
+        date_str = now.strftime("%Y-%m-%d")
+        slug = self._slugify(kwargs["title"])
+        path = dest_dir / f"{date_str}-{slug}.md"
+
+        content = self._format_draft_output(draft=draft, **kwargs)
+        path.write_text(content, encoding="utf-8")
+
+        return {"path": str(path), "action": "draft_generated", "draft_length": len(draft)}
+
+    def _handle_task(self, **kwargs) -> dict:
+        """Extract and write action items."""
+        dest_dir = self._vault_root / "tasks"
+        path = self._write_markdown(dest_dir, **kwargs)
+        return {"path": str(path), "action": "tasks_extracted"}
+
+    def _handle_idea(self, **kwargs) -> dict:
+        """Capture an idea as markdown."""
+        dest_dir = self._vault_root / "ideas"
+        path = self._write_markdown(dest_dir, **kwargs)
+        return {"path": str(path), "action": "idea_captured"}
+
+    def _handle_general(self, **kwargs) -> dict:
+        """Default handler — write to inbox for review."""
+        dest_dir = self._vault_root / "inbox"
+        path = self._write_markdown(dest_dir, **kwargs)
+        return {"path": str(path), "action": "filed_to_inbox"}
+
+    # ------------------------------------------------------------------
+    # Markdown formatting
+    # ------------------------------------------------------------------
+
+    def _write_markdown(self, dest_dir: Path, **kwargs) -> Path:
+        """Write a standard Obsidian markdown note."""
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        now = kwargs["now"]
+        date_str = now.strftime("%Y-%m-%d")
+        slug = self._slugify(kwargs["title"])
+        path = dest_dir / f"{date_str}-{slug}.md"
+
+        content = self._format_markdown(**kwargs)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def _format_markdown(self, **kwargs) -> str:
+        """Format a transcript as an Obsidian-compatible markdown note with YAML frontmatter."""
+        classification: ClassificationResult = kwargs["classification"]
+        title = kwargs["title"]
+        summary = kwargs["summary"]
+        transcript = kwargs["transcript"]
+        uuid = kwargs["uuid"]
+        duration = kwargs["duration"]
+        created_at = kwargs["created_at"]
+        now = kwargs["now"]
+
+        # YAML frontmatter for Obsidian
+        tags = [f"sotto/{classification.intent}"]
+        if classification.urgency == "high":
+            tags.append("urgent")
+
+        frontmatter_data = {
+            "title": title,
+            "date": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "intent": classification.intent,
+            "subject": classification.subject,
+            "urgency": classification.urgency,
+            "tags": tags,
+            "uuid": uuid,
+            "duration_seconds": round(duration, 1),
+            "captured_at": created_at,
+        }
+
+        # Build frontmatter manually for clean YAML
+        fm_lines = ["---"]
+        for key, val in frontmatter_data.items():
+            if isinstance(val, list):
+                fm_lines.append(f"{key}:")
+                for item in val:
+                    fm_lines.append(f"  - {item}")
+            else:
+                fm_lines.append(f"{key}: {val}")
+        fm_lines.append("---")
+        frontmatter = "\n".join(fm_lines)
+
+        # Body
+        sections = [frontmatter, "", f"# {title}", ""]
+
+        if summary:
+            sections.extend([f"> {summary}", ""])
+
+        # People and projects as links
+        entities = classification.entities
+        if entities.get("people"):
+            people_links = ", ".join(f"[[{p}]]" for p in entities["people"])
+            sections.append(f"**People:** {people_links}")
+        if entities.get("projects"):
+            project_links = ", ".join(f"[[{p}]]" for p in entities["projects"])
+            sections.append(f"**Projects:** {project_links}")
+        if entities.get("people") or entities.get("projects"):
+            sections.append("")
+
+        # Action items as checkboxes
+        if classification.action_items:
+            sections.append("## Action Items")
+            for item in classification.action_items:
+                sections.append(f"- [ ] {item}")
+            sections.append("")
+
+        # Transcript
+        sections.extend(["## Transcript", "", transcript, ""])
+
+        return "\n".join(sections)
+
+    def _format_journal_entry(self, **kwargs) -> str:
+        """Format a journal entry (no frontmatter, just content for appending)."""
+        now = kwargs["now"]
+        title = kwargs["title"]
+        transcript = kwargs["transcript"]
+        classification: ClassificationResult = kwargs["classification"]
+
+        time_str = now.strftime("%H:%M")
+        lines = [f"## {time_str} — {title}", ""]
+
+        if classification.subject:
+            lines.append(f"*{classification.subject}*")
+            lines.append("")
+
+        lines.append(transcript)
+
+        if classification.action_items:
+            lines.append("")
+            lines.append("**Action items:**")
+            for item in classification.action_items:
+                lines.append(f"- [ ] {item}")
+
+        return "\n".join(lines)
+
+    def _format_draft_output(self, **kwargs) -> str:
+        """Format a draft request output with both the original dictation and the generated draft."""
+        classification: ClassificationResult = kwargs["classification"]
+        title = kwargs["title"]
+        transcript = kwargs["transcript"]
+        draft = kwargs["draft"]
+        uuid = kwargs["uuid"]
+        now = kwargs["now"]
+
+        frontmatter = f"""---
+title: "Draft: {title}"
+date: {now.strftime("%Y-%m-%dT%H:%M:%S")}
+intent: draft_request
+subject: {classification.subject}
+tags:
+  - sotto/draft_request
+  - needs-review
+uuid: {uuid}
+---"""
+
+        return f"""{frontmatter}
+
+# Draft: {title}
+
+> **Status:** Needs review
+> **Generated from voice memo on** {now.strftime("%Y-%m-%d at %H:%M")}
+
+## Generated Draft
+
+{draft}
+
+---
+
+## Original Dictation
+
+{transcript}
+
+---
+
+## Classification Details
+
+- **Subject:** {classification.subject}
+- **Action items:** {", ".join(classification.action_items) if classification.action_items else "None"}
+- **Reasoning:** {classification.reasoning}
+"""
+
+    # ------------------------------------------------------------------
+    # Draft generation (Claude)
+    # ------------------------------------------------------------------
+
+    def _generate_draft(
+        self, transcript: str, classification: ClassificationResult, pipeline: PipelineConfig
+    ) -> str:
+        """Send the transcript to an LLM to generate a draft based on the dictated request."""
+        prompt = f"""You are helping a user who has dictated their thoughts about something they want drafted. They spoke into a voice recorder and this is the transcription of what they said.
+
+Your job: Produce a well-structured draft based on what they described. This could be:
+- A feature spec or technical proposal
+- An architectural plan
+- A project brief
+- An email or message
+- A document outline
+
+Infer the appropriate format from the content. Be thorough but concise. Use markdown formatting.
+
+If they mentioned specific requirements, constraints, or context, incorporate all of it.
+If they described an architectural approach, produce a structured technical plan with clear sections.
+
+Here is what they dictated:
+
+{transcript}
+
+Additional context from classification:
+- Subject: {classification.subject}
+- Key entities: {json.dumps(classification.entities)}
+- Extracted action items: {json.dumps(classification.action_items)}
+
+Produce the draft now:"""
+
+        try:
+            if pipeline.llm_backend == "anthropic":
+                return self._call_anthropic_draft(prompt, pipeline.model)
+            elif pipeline.llm_backend == "ollama":
+                return self._call_ollama_draft(prompt, pipeline.model)
+            elif pipeline.llm_backend == "openai":
+                return self._call_openai_draft(prompt, pipeline.model)
+            else:
+                return f"*Draft generation not available for backend: {pipeline.llm_backend}*"
+        except Exception as e:
+            logger.warning("Draft generation failed: %s", e)
+            return f"*Draft generation failed: {e}*\n\nOriginal transcript preserved above for manual drafting."
+
+    def _call_anthropic_draft(self, prompt: str, model: str) -> str:
+        api_key = self.config.api_keys.get("anthropic")
+        if not api_key:
+            raise ValueError("Anthropic API key not configured")
+
+        resp = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+        return resp.json()["content"][0]["text"]
+
+    def _call_ollama_draft(self, prompt: str, model: str) -> str:
+        endpoint = self.config.ollama.endpoint
+        resp = httpx.post(
+            f"{endpoint}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+            timeout=300.0,
+        )
+        resp.raise_for_status()
+        return resp.json()["response"]
+
+    def _call_openai_draft(self, prompt: str, model: str) -> str:
+        api_key = self.config.api_keys.get("openai")
+        if not api_key:
+            raise ValueError("OpenAI API key not configured")
+
+        resp = httpx.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 4096,
+            },
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _slugify(text: str) -> str:
+        """Convert text to a filesystem-safe slug."""
+        import re
+        slug = text.lower().strip()
+        slug = re.sub(r"[^\w\s-]", "", slug)
+        slug = re.sub(r"[\s_]+", "-", slug)
+        slug = re.sub(r"-+", "-", slug)
+        return slug[:60].rstrip("-")

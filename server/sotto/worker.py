@@ -12,8 +12,10 @@ from pathlib import Path
 
 import httpx
 
+from .classifier import Classifier, ClassificationResult
 from .config import Config, PipelineConfig
 from .db import Database
+from .dispatcher import Dispatcher
 
 logger = logging.getLogger("sotto.worker")
 
@@ -35,7 +37,9 @@ class Worker:
         self.config = config
         self.db = db
         self._running = False
-        
+        self.classifier = Classifier(config)
+        self.dispatcher = Dispatcher(config)
+
         # Windows-specific: Prepare CUDA DLLs if using GPU
         if self.config.whisper.device == "cuda":
             self._prepare_cuda_env()
@@ -119,8 +123,25 @@ class Worker:
         logger.info("Transcribing %s", uuid)
         transcript, duration = self._transcribe(audio_path)
 
-        # Step 2: Generate title and summary (skipped in transcribe_only mode)
+        # Step 2: Classify intent (skipped in transcribe_only mode)
+        classification = None
         error_msg = None
+        if not transcribe_only:
+            self.db.update_status(uuid, "classifying")
+            logger.info("Classifying %s", uuid)
+            try:
+                classification = self.classifier.classify(transcript, pipeline)
+                self.db.update_job_classification(
+                    uuid=uuid,
+                    intent=classification.intent,
+                    intent_metadata=json.dumps(classification.to_dict()),
+                )
+                logger.info("Classified %s as '%s': %s", uuid, classification.intent, classification.subject)
+            except Exception as e:
+                logger.warning("Classification failed for %s: %s. Continuing with defaults.", uuid, e)
+                classification = ClassificationResult()
+
+        # Step 3: Generate title and summary (skipped in transcribe_only mode)
         if transcribe_only:
             title = transcript[:60].strip() + ("..." if len(transcript) > 60 else "")
             summary = ""
@@ -136,10 +157,39 @@ class Worker:
                 summary = ""
                 error_msg = f"LLM summarization failed: {e}"
 
-        # Step 3: Write output files
+        # Step 4: Write output files (legacy txt/json)
         output_path = self._write_output(uuid, job, transcript, title, summary, duration)
 
-        # Step 4: Mark complete (transcript is always saved, even if LLM failed)
+        # Step 5: Dispatch to destinations (skipped in transcribe_only mode)
+        if not transcribe_only and classification:
+            self.db.update_status(uuid, "dispatching")
+            logger.info("Dispatching %s", uuid)
+            try:
+                dispatch_result = self.dispatcher.dispatch(
+                    uuid=uuid,
+                    transcript=transcript,
+                    classification=classification,
+                    title=title,
+                    summary=summary,
+                    duration=duration,
+                    privacy=job.privacy,
+                    pipeline=pipeline,
+                    created_at=job.created_at,
+                )
+                self.db.update_job_dispatch(
+                    uuid=uuid,
+                    dispatch_result=json.dumps(dispatch_result),
+                    dispatch_status="dispatched",
+                )
+            except Exception as e:
+                logger.warning("Dispatch failed for %s: %s", uuid, e)
+                self.db.update_job_dispatch(
+                    uuid=uuid,
+                    dispatch_result=json.dumps({"error": str(e)}),
+                    dispatch_status="dispatch_failed",
+                )
+
+        # Step 6: Mark complete (transcript is always saved, even if LLM failed)
         self.db.update_job_result(
             uuid=uuid,
             title=title,
