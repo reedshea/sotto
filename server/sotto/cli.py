@@ -16,6 +16,7 @@ import uvicorn
 from .config import DEFAULT_CONFIG_PATH, load_config
 from .db import Database
 from .receiver import init_app
+from .service import install_service, service_status, uninstall_service
 from .worker import Worker
 
 
@@ -95,12 +96,32 @@ def main() -> None:
     start_parser = sub.add_parser("start", help="Start receiver and worker")
     start_parser.add_argument("--config", default=None, help="Config file path")
 
+    # sotto install-service
+    svc_install = sub.add_parser("install-service", help="Install Sotto as a system service")
+    svc_install.add_argument("--config", default=None, help="Config file path")
+
+    # sotto uninstall-service
+    sub.add_parser("uninstall-service", help="Remove Sotto system service")
+
+    # sotto status
+    sub.add_parser("status", help="Check if Sotto service is running")
+
     args = parser.parse_args()
 
     if args.command == "init":
         cmd_init(args)
     elif args.command == "start":
         cmd_start(args)
+    elif args.command == "install-service":
+        install_service(args.config)
+    elif args.command == "uninstall-service":
+        uninstall_service()
+    elif args.command == "status":
+        st = service_status()
+        if st:
+            print(f"Sotto service: {st}")
+        else:
+            print("Sotto service not found or not installed.")
     else:
         parser.print_help()
 
@@ -137,4 +158,23 @@ server:
 auth:
   tokens:
     - "change-me-to-a-real-token"
+
+# Where classified transcripts are dispatched as Obsidian-compatible markdown.
+# Point this at your Obsidian vault or a synced directory.
+destinations:
+  obsidian_vault: ~/.local/share/sotto/vault
+
+# Fast-path intent patterns — if the transcript starts with one of these
+# trigger phrases, skip LLM classification and use the mapped intent directly.
+patterns:
+  - trigger: "note to self"
+    intent: note_to_self
+  - trigger: "meeting with"
+    intent: meeting_debrief
+  - trigger: "journal entry"
+    intent: journal
+  - trigger: "draft"
+    intent: draft_request
+  - trigger: "idea"
+    intent: idea
 """

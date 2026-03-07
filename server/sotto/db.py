@@ -26,16 +26,22 @@ class Job:
     error_message: str | None = None
     transcript: str | None = None
     transcribe_only: int = 0
+    intent: str | None = None
+    intent_metadata: str | None = None  # JSON blob from classifier
+    dispatch_status: str | None = None  # pending_dispatch, dispatched, dispatch_failed
+    dispatch_result: str | None = None  # JSON blob from dispatcher
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> Job:
         return cls(**dict(row))
 
 
-# Valid status transitions matching the iOS lifecycle:
-# pending -> transcribing -> summarizing -> completed
+# Valid status transitions:
+# pending -> transcribing -> classifying -> summarizing -> dispatching -> completed
 # Any state -> failed
-VALID_STATUSES = {"pending", "transcribing", "summarizing", "completed", "failed"}
+VALID_STATUSES = {
+    "pending", "transcribing", "classifying", "summarizing", "dispatching", "completed", "failed",
+}
 
 
 class Database:
@@ -82,6 +88,10 @@ class Database:
             "error_message": "ALTER TABLE jobs ADD COLUMN error_message TEXT",
             "transcript": "ALTER TABLE jobs ADD COLUMN transcript TEXT",
             "transcribe_only": "ALTER TABLE jobs ADD COLUMN transcribe_only INTEGER NOT NULL DEFAULT 0",
+            "intent": "ALTER TABLE jobs ADD COLUMN intent TEXT",
+            "intent_metadata": "ALTER TABLE jobs ADD COLUMN intent_metadata TEXT",
+            "dispatch_status": "ALTER TABLE jobs ADD COLUMN dispatch_status TEXT",
+            "dispatch_result": "ALTER TABLE jobs ADD COLUMN dispatch_result TEXT",
         }
         for col, sql in migrations.items():
             if col not in existing:
@@ -153,6 +163,39 @@ class Database:
                    duration_seconds = ?, transcript = ?, error_message = ?, updated_at = ?
                WHERE uuid = ?""",
             (title, summary, output_path, duration_seconds, transcript, error_message, now, uuid),
+        )
+        self.conn.commit()
+
+    def update_job_classification(
+        self,
+        uuid: str,
+        intent: str,
+        intent_metadata: str,
+    ) -> None:
+        """Store classification results for a job."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """UPDATE jobs
+               SET intent = ?, intent_metadata = ?, dispatch_status = 'pending_dispatch',
+                   updated_at = ?
+               WHERE uuid = ?""",
+            (intent, intent_metadata, now, uuid),
+        )
+        self.conn.commit()
+
+    def update_job_dispatch(
+        self,
+        uuid: str,
+        dispatch_result: str,
+        dispatch_status: str = "dispatched",
+    ) -> None:
+        """Store dispatch results for a job."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """UPDATE jobs
+               SET dispatch_status = ?, dispatch_result = ?, updated_at = ?
+               WHERE uuid = ?""",
+            (dispatch_status, dispatch_result, now, uuid),
         )
         self.conn.commit()
 

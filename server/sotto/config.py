@@ -40,6 +40,18 @@ class ServerConfig:
 
 
 @dataclass
+class DestinationsConfig:
+    # Path to the Obsidian vault root (or any markdown output directory)
+    obsidian_vault: str = "~/.local/share/sotto/vault"
+
+
+@dataclass
+class PatternConfig:
+    trigger: str = ""
+    intent: str = "general"
+
+
+@dataclass
 class AuthConfig:
     tokens: list[str] = field(default_factory=list)
 
@@ -70,6 +82,8 @@ class Config:
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
     auth: AuthConfig = field(default_factory=AuthConfig)
+    destinations: DestinationsConfig = field(default_factory=DestinationsConfig)
+    patterns: list[PatternConfig] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.pipelines:
@@ -114,6 +128,11 @@ def load_config(path: Path | None = None) -> Config:
     whisper = WhisperConfig(**raw.get("whisper", {}))
     server = ServerConfig(**raw.get("server", {}))
     auth = AuthConfig(**raw.get("auth", {}))
+    destinations = DestinationsConfig(**raw.get("destinations", {}))
+
+    patterns = []
+    for pconf in raw.get("patterns", []):
+        patterns.append(PatternConfig(**pconf))
 
     return Config(
         storage=storage,
@@ -123,4 +142,6 @@ def load_config(path: Path | None = None) -> Config:
         whisper=whisper,
         server=server,
         auth=auth,
+        destinations=destinations,
+        patterns=patterns,
     )
