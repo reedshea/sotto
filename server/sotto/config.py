@@ -40,6 +40,13 @@ class ServerConfig:
 
 
 @dataclass
+class ProjectConfig:
+    """A project/repo that can be targeted by plan_request dictations."""
+    path: str = ""  # Local path to the repo
+    aliases: list[str] = field(default_factory=list)  # Alternative names
+
+
+@dataclass
 class DestinationsConfig:
     # Path to the Obsidian vault root (or any markdown output directory)
     obsidian_vault: str = "~/.local/share/sotto/vault"
@@ -84,6 +91,7 @@ class Config:
     auth: AuthConfig = field(default_factory=AuthConfig)
     destinations: DestinationsConfig = field(default_factory=DestinationsConfig)
     patterns: list[PatternConfig] = field(default_factory=list)
+    projects: dict[str, ProjectConfig] = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.pipelines:
@@ -134,6 +142,15 @@ def load_config(path: Path | None = None) -> Config:
     for pconf in raw.get("patterns", []):
         patterns.append(PatternConfig(**pconf))
 
+    projects = {}
+    for name, pconf in raw.get("projects", {}).items():
+        if isinstance(pconf, str):
+            # Short form: project_name: /path/to/repo
+            projects[name] = ProjectConfig(path=pconf)
+        else:
+            aliases = pconf.pop("aliases", [])
+            projects[name] = ProjectConfig(**pconf, aliases=aliases)
+
     return Config(
         storage=storage,
         pipelines=pipelines,
@@ -144,4 +161,5 @@ def load_config(path: Path | None = None) -> Config:
         auth=auth,
         destinations=destinations,
         patterns=patterns,
+        projects=projects,
     )

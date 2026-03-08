@@ -26,6 +26,7 @@ INTENTS = {
     "meeting_debrief": "Notes from a conversation or meeting with others",
     "journal": "Reflective thinking, stream of consciousness, personal observations",
     "draft_request": "A request to draft something — a proposal, email, plan, feature spec, etc.",
+    "plan_request": "A request to investigate a codebase and create an implementation plan for a feature, refactor, or bug fix",
     "task": "One or more actionable items with clear next steps",
     "idea": "An idea for a project, feature, product, or creative endeavor",
     "general": "Anything that doesn't fit the above categories",
@@ -38,6 +39,7 @@ Available intents:
 - meeting_debrief: Notes from a conversation or meeting
 - journal: Reflective thinking, stream of consciousness
 - draft_request: A request to draft something (proposal, email, plan, feature spec, code architecture)
+- plan_request: A request to investigate a codebase/project and create an implementation plan (feature, refactor, bug fix, architecture change). The user is describing work they want done on a specific software project.
 - task: Actionable items with clear next steps
 - idea: An idea for a project, feature, or creative endeavor
 - general: Anything else
