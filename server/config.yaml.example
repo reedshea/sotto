@@ -41,3 +41,35 @@ auth:
   # Bearer token(s) for authenticating iOS app uploads
   tokens:
     - "change-me-to-a-real-token"
+
+# Where classified notes are dispatched to (Obsidian vault)
+destinations:
+  obsidian_vault: ~/.local/share/sotto/vault
+
+# Pattern triggers for fast-path classification (skip LLM)
+patterns:
+  - trigger: "note to self"
+    intent: note_to_self
+  - trigger: "meeting with"
+    intent: meeting_debrief
+  - trigger: "plan for"
+    intent: plan_request
+  - trigger: "create a plan"
+    intent: plan_request
+  - trigger: "I want to work on"
+    intent: plan_request
+  - trigger: "investigate"
+    intent: plan_request
+
+# Projects that can be targeted by plan_request dictations.
+# The classifier extracts project names from your dictation and matches
+# them to these entries. If only one project is configured, it's used
+# as the default.
+projects:
+  # Short form — just a path:
+  # sotto: ~/sotto
+  #
+  # Full form with aliases:
+  # sotto:
+  #   path: ~/sotto
+  #   aliases: ["soto", "voice app"]

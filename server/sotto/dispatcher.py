@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -69,6 +70,7 @@ class Dispatcher:
             "meeting_debrief": self._handle_meeting,
             "journal": self._handle_journal,
             "draft_request": self._handle_draft_request,
+            "plan_request": self._handle_plan_request,
             "task": self._handle_task,
             "idea": self._handle_idea,
             "general": self._handle_general,
@@ -153,6 +155,220 @@ class Dispatcher:
         path.write_text(content, encoding="utf-8")
 
         return {"path": str(path), "action": "draft_generated", "draft_length": len(draft)}
+
+    def _handle_plan_request(self, **kwargs) -> dict:
+        """Resolve a project, invoke Claude Code CLI to explore and plan, save result."""
+        transcript = kwargs["transcript"]
+        classification = kwargs["classification"]
+        title = kwargs["title"]
+        uuid = kwargs["uuid"]
+        now = kwargs["now"]
+
+        # Resolve which project the user is talking about
+        project_name, project_path = self._resolve_project(classification)
+
+        # Write initial plan-request note to vault
+        dest_dir = self._vault_root / "plans"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        date_str = now.strftime("%Y-%m-%d")
+        slug = self._slugify(title)
+        plan_vault_path = dest_dir / f"{date_str}-{slug}.md"
+
+        # If we have a project path, invoke Claude Code CLI
+        plan_output = None
+        if project_path:
+            plan_output = self._invoke_claude_plan(transcript, project_path, classification)
+
+        # Write the plan file
+        content = self._format_plan_output(
+            transcript=transcript,
+            classification=classification,
+            title=title,
+            uuid=uuid,
+            now=now,
+            project_name=project_name,
+            project_path=project_path,
+            plan_output=plan_output,
+        )
+        plan_vault_path.write_text(content, encoding="utf-8")
+
+        # Also write a PLAN.md into the project repo if we have a path
+        plan_repo_path = None
+        if project_path and plan_output:
+            repo_plan_dir = Path(project_path).expanduser() / ".claude" / "plans"
+            repo_plan_dir.mkdir(parents=True, exist_ok=True)
+            plan_repo_path = repo_plan_dir / f"{date_str}-{slug}.md"
+            plan_repo_path.write_text(content, encoding="utf-8")
+            logger.info("Plan written to repo: %s", plan_repo_path)
+
+        result = {
+            "path": str(plan_vault_path),
+            "action": "plan_generated" if plan_output else "plan_request_saved",
+            "project": project_name,
+            "project_path": project_path,
+        }
+        if plan_repo_path:
+            result["repo_plan_path"] = str(plan_repo_path)
+        return result
+
+    def _resolve_project(self, classification: ClassificationResult) -> tuple[str | None, str | None]:
+        """Match mentioned projects in the classification to configured projects.
+
+        Returns (project_name, project_path) or (None, None) if no match.
+        """
+        projects = getattr(self.config, "projects", {})
+        if not projects:
+            return None, None
+
+        # Check entities.projects from the classifier
+        mentioned = [p.lower() for p in classification.entities.get("projects", [])]
+
+        for name, proj in projects.items():
+            # Match by project config key
+            if name.lower() in mentioned:
+                return name, str(Path(proj.path).expanduser())
+            # Match by aliases
+            for alias in proj.aliases:
+                if alias.lower() in mentioned:
+                    return name, str(Path(proj.path).expanduser())
+
+        # If only one project is configured, use it as default
+        if len(projects) == 1:
+            name = next(iter(projects))
+            proj = projects[name]
+            return name, str(Path(proj.path).expanduser())
+
+        return None, None
+
+    def _invoke_claude_plan(
+        self, transcript: str, project_path: str, classification: ClassificationResult
+    ) -> str | None:
+        """Run Claude Code CLI to explore the codebase and create a plan."""
+        prompt = f"""You received the following voice dictation from the user describing work they want planned on this codebase. Please:
+
+1. Explore the relevant parts of the codebase to understand the current state
+2. Create a detailed implementation plan based on what they described
+3. Output the plan in markdown format
+
+The user dictated:
+
+{transcript}
+
+Context from classification:
+- Subject: {classification.subject}
+- Key entities: {json.dumps(classification.entities)}
+- Action items: {json.dumps(classification.action_items)}
+
+Please explore the codebase and produce a concrete, actionable implementation plan."""
+
+        try:
+            result = subprocess.run(
+                ["claude", "--print", "--dangerously-skip-permissions", "-p", prompt],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                cwd=project_path,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                logger.info("Claude Code plan generated (%d chars)", len(result.stdout))
+                return result.stdout.strip()
+            else:
+                logger.warning(
+                    "Claude Code returned code %d: %s",
+                    result.returncode,
+                    result.stderr[:500] if result.stderr else "no stderr",
+                )
+                return None
+        except FileNotFoundError:
+            logger.warning("Claude CLI not found on PATH — skipping plan generation")
+            return None
+        except subprocess.TimeoutExpired:
+            logger.warning("Claude Code timed out after 600s")
+            return None
+        except Exception as e:
+            logger.warning("Claude Code invocation failed: %s", e)
+            return None
+
+    def _format_plan_output(
+        self,
+        transcript: str,
+        classification: ClassificationResult,
+        title: str,
+        uuid: str,
+        now: datetime,
+        project_name: str | None,
+        project_path: str | None,
+        plan_output: str | None,
+    ) -> str:
+        """Format a plan request as an Obsidian markdown note."""
+        date_str = now.strftime("%Y-%m-%dT%H:%M:%S")
+        status = "plan-ready" if plan_output else "plan-pending"
+
+        tags = ["sotto/plan_request"]
+        if plan_output:
+            tags.append("needs-review")
+        else:
+            tags.append("needs-planning")
+
+        lines = [
+            "---",
+            f'title: "Plan: {title}"',
+            f"date: {date_str}",
+            "intent: plan_request",
+            f"subject: {classification.subject}",
+            f"status: {status}",
+            f"project: {project_name or 'unknown'}",
+            "tags:",
+        ]
+        for tag in tags:
+            lines.append(f"  - {tag}")
+        lines.extend([
+            f"uuid: {uuid}",
+            "---",
+            "",
+            f"# Plan: {title}",
+            "",
+            f"> **Status:** {status}",
+            f"> **Project:** {project_name or 'not resolved'} (`{project_path or 'N/A'}`)",
+            f"> **Generated from voice memo on** {now.strftime('%Y-%m-%d at %H:%M')}",
+            "",
+        ])
+
+        if plan_output:
+            lines.extend([
+                "## Implementation Plan",
+                "",
+                plan_output,
+                "",
+                "---",
+                "",
+            ])
+        else:
+            lines.extend([
+                "## Plan",
+                "",
+                "*Plan generation pending — Claude CLI was not available or no project was resolved.*",
+                "",
+                "---",
+                "",
+            ])
+
+        lines.extend([
+            "## Original Dictation",
+            "",
+            transcript,
+            "",
+            "---",
+            "",
+            "## Classification Details",
+            "",
+            f"- **Subject:** {classification.subject}",
+            f"- **Action items:** {', '.join(classification.action_items) if classification.action_items else 'None'}",
+            f"- **Reasoning:** {classification.reasoning}",
+            "",
+        ])
+
+        return "\n".join(lines)
 
     def _handle_task(self, **kwargs) -> dict:
         """Extract and write action items."""
