@@ -16,6 +16,7 @@ from .classifier import Classifier, ClassificationResult
 from .config import Config, PipelineConfig
 from .db import Database
 from .dispatcher import Dispatcher
+from .orchestrator import Orchestrator
 from .reply_parser import extract_context, parse_reply
 
 logger = logging.getLogger("sotto.worker")
@@ -34,12 +35,12 @@ Transcript:
 class Worker:
     """Processes pending transcription jobs."""
 
-    def __init__(self, config: Config, db: Database):
+    def __init__(self, config: Config, db: Database, orchestrator: Orchestrator | None = None):
         self.config = config
         self.db = db
         self._running = False
         self.classifier = Classifier(config)
-        self.dispatcher = Dispatcher(config)
+        self.dispatcher = Dispatcher(config, orchestrator=orchestrator)
 
         # Windows-specific: Prepare CUDA DLLs if using GPU
         if self.config.whisper.device == "cuda":

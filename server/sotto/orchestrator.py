@@ -217,8 +217,8 @@ class Orchestrator:
 
     def _resolve_vault_root(self) -> Path:
         destinations = getattr(self.config, "destinations", None)
-        if destinations and hasattr(destinations, "obsidian_vault"):
-            return Path(destinations.obsidian_vault).expanduser()
+        if destinations and destinations.get("obsidian_vault"):
+            return Path(destinations["obsidian_vault"]).expanduser()
         return self.config.storage.output_dir / "vault"
 
     def _resolve_report_dir(self) -> Path:

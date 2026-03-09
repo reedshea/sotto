@@ -15,6 +15,7 @@ import uvicorn
 
 from .config import DEFAULT_CONFIG_PATH, load_config
 from .db import Database
+from .orchestrator import Orchestrator
 from .receiver import init_app
 from .service import install_service, service_status, uninstall_service
 from .worker import Worker
@@ -55,10 +56,11 @@ def cmd_start(args: argparse.Namespace) -> None:
     # Initialize FastAPI app with config
     init_app(config)
 
-    # Start worker in a background thread
+    # Start worker in a background thread, with orchestrator for active intents
     db = Database(config.storage.output_dir / "sotto.db")
     db.connect()
-    worker = Worker(config, db)
+    orchestrator = Orchestrator(config)
+    worker = Worker(config, db, orchestrator=orchestrator)
 
     worker_thread = threading.Thread(target=worker.run, daemon=True)
     worker_thread.start()

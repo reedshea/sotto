@@ -14,7 +14,7 @@ from sotto.dispatcher import Dispatcher
 def config(tmp_path):
     return Config(
         storage=StorageConfig(output_dir=tmp_path / "sotto-dispatch-test"),
-        destinations=DestinationsConfig(obsidian_vault=str(tmp_path / "vault")),
+        destinations=DestinationsConfig({"obsidian_vault": str(tmp_path / "vault")}),
         pipelines={
             "standard": PipelineConfig(
                 transcription="local", llm_backend="anthropic", model="claude-sonnet-4-6"

@@ -22,7 +22,7 @@ from sotto.orchestrator import Orchestrator, SessionStore, TaskStatus
 def tmp_config(tmp_path):
     return Config(
         storage=StorageConfig(output_dir=tmp_path / "sotto-orch-test"),
-        destinations=DestinationsConfig(obsidian_vault=str(tmp_path / "vault")),
+        destinations=DestinationsConfig({"obsidian_vault": str(tmp_path / "vault")}),
         pipelines={
             "standard": PipelineConfig(
                 transcription="local", llm_backend="anthropic", model="claude-sonnet-4-6"
