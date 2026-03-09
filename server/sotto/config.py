@@ -59,6 +59,15 @@ class PatternConfig:
 
 
 @dataclass
+class OrchestratorConfig:
+    """Configuration for the async Claude Code CLI orchestrator layer."""
+    max_concurrent: int = 4
+    timeout_seconds: int = 600
+    session_store_path: str | None = None  # Defaults to output_dir/orchestrator.db
+    report_dir: str | None = None  # Defaults to vault_root/reports
+
+
+@dataclass
 class AuthConfig:
     tokens: list[str] = field(default_factory=list)
 
@@ -92,6 +101,7 @@ class Config:
     destinations: DestinationsConfig = field(default_factory=DestinationsConfig)
     patterns: list[PatternConfig] = field(default_factory=list)
     projects: dict[str, ProjectConfig] = field(default_factory=dict)
+    orchestrator: OrchestratorConfig = field(default_factory=OrchestratorConfig)
 
     def __post_init__(self):
         if not self.pipelines:
@@ -151,6 +161,8 @@ def load_config(path: Path | None = None) -> Config:
             aliases = pconf.pop("aliases", [])
             projects[name] = ProjectConfig(**pconf, aliases=aliases)
 
+    orchestrator = OrchestratorConfig(**raw.get("orchestrator", {}))
+
     return Config(
         storage=storage,
         pipelines=pipelines,
@@ -162,4 +174,5 @@ def load_config(path: Path | None = None) -> Config:
         destinations=destinations,
         patterns=patterns,
         projects=projects,
+        orchestrator=orchestrator,
     )
