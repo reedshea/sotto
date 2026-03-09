@@ -98,18 +98,18 @@ async def upload_audio(
         worker.process_job(job_uuid, transcribe_only=transcribe_only)
 
         job = db.get_job(job_uuid)
-        return JSONResponse(
-            status_code=201,
-            content={
-                "uuid": job.uuid,
-                "status": job.status,
-                "transcript": job.transcript,
-                "title": job.title,
-                "summary": job.summary,
-                "duration_seconds": job.duration_seconds,
-                "error_message": job.error_message,
-            },
-        )
+        response_content = {
+            "uuid": job.uuid,
+            "status": job.status,
+            "transcript": job.transcript,
+            "title": job.title,
+            "summary": job.summary,
+            "duration_seconds": job.duration_seconds,
+            "error_message": job.error_message,
+        }
+        if job.reply_to:
+            response_content["reply_to"] = job.reply_to
+        return JSONResponse(status_code=201, content=response_content)
 
     return JSONResponse(
         status_code=201,
@@ -144,6 +144,7 @@ async def get_job_status(
         "transcript": job.transcript,
         "duration_seconds": job.duration_seconds,
         "error_message": job.error_message,
+        "reply_to": job.reply_to,
     }
     return result
 

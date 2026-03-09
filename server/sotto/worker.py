@@ -16,6 +16,7 @@ from .classifier import Classifier, ClassificationResult
 from .config import Config, PipelineConfig
 from .db import Database
 from .dispatcher import Dispatcher
+from .reply_parser import extract_context, parse_reply
 
 logger = logging.getLogger("sotto.worker")
 
@@ -123,6 +124,25 @@ class Worker:
         logger.info("Transcribing %s", uuid)
         transcript, duration = self._transcribe(audio_path)
 
+        # Step 1b: Extract reply-to ID and project reference using local LLM.
+        # Falls back to regex if Ollama is unavailable.
+        project_names = list(self.config.projects.keys())
+        extraction = extract_context(
+            transcript=transcript,
+            project_names=project_names,
+            ollama_endpoint=self.config.ollama.endpoint,
+            model=self.config.pipelines.get("private", PipelineConfig()).model,
+        )
+        reply_to = extraction.reply_to
+        resolved_project = extraction.project
+        if reply_to:
+            logger.info("Detected reply-to ID '%s' in %s", reply_to, uuid)
+            self.db.update_job_reply_to(uuid, reply_to)
+        if resolved_project:
+            logger.info("Matched project '%s' in %s", resolved_project, uuid)
+        # Use the body (prefix stripped) for downstream processing
+        transcript_body = extraction.body
+
         # Step 2: Classify intent (skipped in transcribe_only mode)
         classification = None
         error_msg = None
@@ -130,7 +150,7 @@ class Worker:
             self.db.update_status(uuid, "classifying")
             logger.info("Classifying %s", uuid)
             try:
-                classification = self.classifier.classify(transcript, pipeline)
+                classification = self.classifier.classify(transcript_body, pipeline)
                 self.db.update_job_classification(
                     uuid=uuid,
                     intent=classification.intent,
@@ -143,22 +163,22 @@ class Worker:
 
         # Step 3: Generate title and summary (skipped in transcribe_only mode)
         if transcribe_only:
-            title = transcript[:60].strip() + ("..." if len(transcript) > 60 else "")
+            title = transcript_body[:60].strip() + ("..." if len(transcript_body) > 60 else "")
             summary = ""
             logger.info("Transcribe-only mode for %s, skipping LLM", uuid)
         else:
             self.db.update_status(uuid, "summarizing")
             logger.info("Generating title/summary for %s", uuid)
             try:
-                title, summary = self._generate_title_summary(transcript, pipeline)
+                title, summary = self._generate_title_summary(transcript_body, pipeline)
             except Exception as e:
                 logger.warning("LLM failed for %s: %s. Using fallback.", uuid, e)
-                title = transcript[:60].strip() + "..." if len(transcript) > 60 else transcript
+                title = transcript_body[:60].strip() + "..." if len(transcript_body) > 60 else transcript_body
                 summary = ""
                 error_msg = f"LLM summarization failed: {e}"
 
         # Step 4: Write output files (legacy txt/json)
-        output_path = self._write_output(uuid, job, transcript, title, summary, duration)
+        output_path = self._write_output(uuid, job, transcript, title, summary, duration, reply_to)
 
         # Step 5: Dispatch to destinations (skipped in transcribe_only mode)
         if not transcribe_only and classification:
@@ -175,6 +195,8 @@ class Worker:
                     privacy=job.privacy,
                     pipeline=pipeline,
                     created_at=job.created_at,
+                    reply_to=reply_to,
+                    resolved_project=resolved_project,
                 )
                 self.db.update_job_dispatch(
                     uuid=uuid,
@@ -315,7 +337,10 @@ class Worker:
             summary = " ".join(lines[1:3])[:200] if len(lines) > 1 else ""
             return title, summary
 
-    def _write_output(self, uuid: str, job, transcript: str, title: str, summary: str, duration: float) -> Path:
+    def _write_output(
+        self, uuid: str, job, transcript: str, title: str, summary: str,
+        duration: float, reply_to: str | None = None,
+    ) -> Path:
         """Write .txt and .json output files."""
         now = datetime.now(timezone.utc)
         month_dir = self.config.storage.completed_dir / str(now.year) / f"{now.month:02d}"
@@ -335,6 +360,8 @@ class Worker:
             "pipeline_used": job.privacy,
             "model_used": self.config.pipelines[job.privacy].model,
         }
+        if reply_to:
+            meta["reply_to"] = reply_to
         json_path = month_dir / f"{uuid}.json"
         json_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
