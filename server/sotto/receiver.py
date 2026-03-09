@@ -10,12 +10,14 @@ from fastapi.responses import JSONResponse
 
 from .config import Config, load_config
 from .db import Database
+from .orchestrator import Orchestrator
 from .worker import Worker
 
 app = FastAPI(title="Sotto", version="0.1.0")
 
 _config: Config | None = None
 _db: Database | None = None
+_orchestrator: Orchestrator | None = None
 
 
 def get_config() -> Config:
@@ -35,13 +37,21 @@ def get_db() -> Database:
     return _db
 
 
+def get_orchestrator() -> Orchestrator:
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = Orchestrator(get_config())
+    return _orchestrator
+
+
 def init_app(config: Config) -> None:
     """Initialize the app with a specific config (used by CLI)."""
-    global _config, _db
+    global _config, _db, _orchestrator
     _config = config
     _config.ensure_dirs()
     _db = Database(config.storage.output_dir / "sotto.db")
     _db.connect()
+    _orchestrator = Orchestrator(config)
 
 
 def _check_auth(authorization: str | None, config: Config) -> None:
@@ -180,3 +190,88 @@ async def list_jobs(
 async def health():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# ------------------------------------------------------------------
+# Orchestrator endpoints — async Claude Code CLI session management
+# ------------------------------------------------------------------
+
+
+@app.post("/orchestrator/submit")
+async def orchestrator_submit(
+    prompt: str = Form(...),
+    project: str | None = Form(default=None),
+    reply_to: str | None = Form(default=None),
+    project_path: str | None = Form(default=None),
+    authorization: str | None = Header(default=None),
+    config: Config = Depends(get_config),
+):
+    """Submit a task to the Claude Code orchestrator.
+
+    The task runs asynchronously — poll /orchestrator/tasks/{task_id} for results.
+    If reply_to matches a previous session, Claude resumes that conversation.
+    """
+    _check_auth(authorization, config)
+    orch = get_orchestrator()
+
+    task_id = await orch.submit(
+        prompt=prompt,
+        project=project,
+        reply_to=reply_to,
+        project_path=project_path,
+    )
+    return {"task_id": task_id, "status": "queued"}
+
+
+@app.get("/orchestrator/tasks/{task_id}")
+async def orchestrator_task_status(
+    task_id: str,
+    authorization: str | None = Header(default=None),
+    config: Config = Depends(get_config),
+):
+    """Check the status of an orchestrator task."""
+    _check_auth(authorization, config)
+    orch = get_orchestrator()
+
+    status = orch.check(task_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    result = {
+        "task_id": status.task_id,
+        "state": status.state,
+        "session_id": status.session_id,
+        "project": status.project,
+        "reply_to": status.reply_to,
+        "created_at": status.created_at,
+        "updated_at": status.updated_at,
+    }
+    if status.state in ("completed", "failed", "timeout"):
+        result["output"] = status.output
+        result["error"] = status.error
+        result["report_path"] = status.report_path
+    return result
+
+
+@app.get("/orchestrator/tasks")
+async def orchestrator_list_tasks(
+    active_only: bool = Query(default=False),
+    limit: int = Query(default=20),
+    authorization: str | None = Header(default=None),
+    config: Config = Depends(get_config),
+):
+    """List orchestrator tasks."""
+    _check_auth(authorization, config)
+    orch = get_orchestrator()
+
+    tasks = orch.list_active() if active_only else orch.list_recent(limit)
+    return [
+        {
+            "task_id": t.task_id,
+            "state": t.state,
+            "project": t.project,
+            "reply_to": t.reply_to,
+            "created_at": t.created_at,
+        }
+        for t in tasks
+    ]
