@@ -42,9 +42,11 @@ auth:
   tokens:
     - "change-me-to-a-real-token"
 
-# Where classified notes are dispatched to (Obsidian vault)
+# Named output destinations — add as many as you need.
+# Each key is a name, each value is a path.
 destinations:
   obsidian_vault: ~/.local/share/sotto/vault
+  # e-reader: G:\My Drive\Rakuten Kobo
 
 # Pattern triggers for fast-path classification (skip LLM)
 patterns:

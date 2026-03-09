@@ -28,7 +28,7 @@ def worker_config(tmp_path):
         api_keys={"anthropic": "test-key"},
         ollama=OllamaConfig(endpoint="http://localhost:11434"),
         whisper=WhisperConfig(model="tiny", device="cpu"),
-        destinations=DestinationsConfig(obsidian_vault=str(tmp_path / "vault")),
+        destinations=DestinationsConfig({"obsidian_vault": str(tmp_path / "vault")}),
     )
 
 

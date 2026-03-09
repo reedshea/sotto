@@ -46,10 +46,21 @@ class ProjectConfig:
     aliases: list[str] = field(default_factory=list)  # Alternative names
 
 
-@dataclass
-class DestinationsConfig:
-    # Path to the Obsidian vault root (or any markdown output directory)
-    obsidian_vault: str = "~/.local/share/sotto/vault"
+class DestinationsConfig(dict):
+    """Arbitrary named destinations, keyed by name, values are paths.
+
+    Always includes 'obsidian_vault' with a default.
+    Access via dict syntax: destinations["obsidian_vault"], destinations.get("e-reader").
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setdefault("obsidian_vault", "~/.local/share/sotto/vault")
+
+    @property
+    def obsidian_vault(self) -> str:
+        """Convenience accessor for the primary vault path."""
+        return self["obsidian_vault"]
 
 
 @dataclass
@@ -146,7 +157,7 @@ def load_config(path: Path | None = None) -> Config:
     whisper = WhisperConfig(**raw.get("whisper", {}))
     server = ServerConfig(**raw.get("server", {}))
     auth = AuthConfig(**raw.get("auth", {}))
-    destinations = DestinationsConfig(**raw.get("destinations", {}))
+    destinations = DestinationsConfig(raw.get("destinations", {}))
 
     patterns = []
     for pconf in raw.get("patterns", []):
