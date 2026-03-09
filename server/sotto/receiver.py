@@ -104,7 +104,7 @@ async def upload_audio(
 
     if sync:
         # Process inline — block until transcription (and optionally summarization) finishes.
-        worker = Worker(config, db)
+        worker = Worker(config, db, orchestrator=get_orchestrator())
         worker.process_job(job_uuid, transcribe_only=transcribe_only)
 
         job = db.get_job(job_uuid)

@@ -62,6 +62,16 @@ patterns:
     intent: plan_request
   - trigger: "investigate"
     intent: plan_request
+  - trigger: "go implement"
+    intent: code_request
+  - trigger: "go build"
+    intent: code_request
+  - trigger: "go fix"
+    intent: code_request
+  - trigger: "implement"
+    intent: code_request
+  - trigger: "fix the"
+    intent: code_request
 
 # Projects that can be targeted by plan_request dictations.
 # The classifier extracts project names from your dictation and matches

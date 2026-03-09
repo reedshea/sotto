@@ -4,6 +4,9 @@ After a transcript is classified by intent, the dispatcher determines what to do
 with it: write Obsidian-formatted markdown, generate a draft via Claude, extract
 tasks, append to a journal, etc.
 
+For "active" intents (plan_request, code_request) and reply-to-session matches,
+the dispatcher hands off to the orchestrator instead of writing markdown directly.
+
 Output destinations are organized for Obsidian vault consumption:
   vault_root/
     inbox/          <- items needing review
@@ -13,29 +16,40 @@ Output destinations are organized for Obsidian vault consumption:
     drafts/         <- draft_request outputs (Claude-generated)
     ideas/          <- idea captures
     tasks/          <- extracted action items
+    reports/        <- orchestrator output (via Claude Code CLI)
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
 from .classifier import ClassificationResult
 from .config import Config, PipelineConfig
 
+if TYPE_CHECKING:
+    from .orchestrator import Orchestrator
+
 logger = logging.getLogger("sotto.dispatcher")
+
+# Intents that should be routed to the orchestrator (Claude Code CLI)
+# rather than handled locally by the dispatcher.
+ORCHESTRATOR_INTENTS = {"plan_request", "code_request"}
 
 
 class Dispatcher:
     """Routes completed, classified transcriptions to output destinations."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, orchestrator: Orchestrator | None = None):
         self.config = config
+        self._orchestrator = orchestrator
         self._vault_root = self._resolve_vault_root()
 
     def _resolve_vault_root(self) -> Path:
@@ -67,12 +81,39 @@ class Dispatcher:
         intent = classification.intent
         now = datetime.now(timezone.utc)
 
+        # Check if this should be routed to the orchestrator:
+        # 1. Active intents (plan_request, code_request) with an orchestrator available
+        # 2. Any voice memo with a reply_to that matches an existing orchestrator session
+        if self._orchestrator and self._should_orchestrate(intent, reply_to, resolved_project):
+            try:
+                result = self._handle_orchestrator(
+                    transcript=transcript,
+                    classification=classification,
+                    intent=intent,
+                    reply_to=reply_to,
+                    resolved_project=resolved_project,
+                )
+                result["intent"] = intent
+                result["dispatched_at"] = now.isoformat()
+                logger.info(
+                    "Dispatched %s to orchestrator as '%s' -> task_id=%s",
+                    uuid, intent, result.get("task_id", "n/a"),
+                )
+                return result
+            except Exception as e:
+                logger.warning(
+                    "Orchestrator handoff failed for %s, falling back to local dispatch: %s",
+                    uuid, e,
+                )
+                # Fall through to local dispatch
+
         handler = {
             "note_to_self": self._handle_note,
             "meeting_debrief": self._handle_meeting,
             "journal": self._handle_journal,
             "draft_request": self._handle_draft_request,
             "plan_request": self._handle_plan_request,
+            "code_request": self._handle_code_request,
             "task": self._handle_task,
             "idea": self._handle_idea,
             "general": self._handle_general,
@@ -100,6 +141,125 @@ class Dispatcher:
         except Exception as e:
             logger.exception("Dispatch failed for %s", uuid)
             return {"intent": intent, "error": str(e), "dispatched_at": now.isoformat()}
+
+    # ------------------------------------------------------------------
+    # Orchestrator routing
+    # ------------------------------------------------------------------
+
+    def _should_orchestrate(
+        self, intent: str, reply_to: str | None, resolved_project: str | None
+    ) -> bool:
+        """Decide whether this dispatch should go to the orchestrator."""
+        # Active intents always go to the orchestrator
+        if intent in ORCHESTRATOR_INTENTS:
+            return True
+        # Reply-to that matches an existing orchestrator session
+        if reply_to and self._orchestrator:
+            sid = self._orchestrator.store.get_session_id(reply_to, resolved_project)
+            if sid:
+                return True
+        return False
+
+    def _handle_orchestrator(
+        self,
+        transcript: str,
+        classification: ClassificationResult,
+        intent: str,
+        reply_to: str | None,
+        resolved_project: str | None,
+    ) -> dict:
+        """Submit work to the orchestrator (Claude Code CLI).
+
+        Builds a prompt appropriate for the intent and submits it.
+        Returns immediately — the orchestrator runs async.
+        """
+        # Build the Claude prompt based on intent
+        if intent == "plan_request":
+            prompt = self._build_plan_prompt(transcript, classification)
+        elif intent == "code_request":
+            prompt = self._build_code_prompt(transcript, classification)
+        else:
+            # Reply to an existing session — just forward the transcript
+            prompt = transcript
+
+        # Submit to orchestrator (sync bridge to async)
+        task_id = self._submit_to_orchestrator(
+            prompt=prompt,
+            project=resolved_project,
+            reply_to=reply_to,
+        )
+
+        return {
+            "action": "orchestrator_submitted",
+            "task_id": task_id,
+            "project": resolved_project,
+            "reply_to": reply_to,
+        }
+
+    def _build_plan_prompt(self, transcript: str, classification: ClassificationResult) -> str:
+        """Build a Claude prompt for plan_request intent."""
+        return f"""You received the following voice dictation from the user describing work they want planned on this codebase. Please:
+
+1. Explore the relevant parts of the codebase to understand the current state
+2. Create a detailed implementation plan based on what they described
+3. Output the plan in markdown format
+
+Do NOT implement anything yet — just plan.
+
+The user dictated:
+
+{transcript}
+
+Context from classification:
+- Subject: {classification.subject}
+- Key entities: {json.dumps(classification.entities)}
+- Action items: {json.dumps(classification.action_items)}
+
+Please explore the codebase and produce a concrete, actionable implementation plan."""
+
+    def _build_code_prompt(self, transcript: str, classification: ClassificationResult) -> str:
+        """Build a Claude prompt for code_request intent."""
+        return f"""You received the following voice dictation from the user. They want you to implement changes in this codebase. Please:
+
+1. Understand what they're asking for
+2. Explore the relevant parts of the codebase
+3. Implement the changes
+4. Run any relevant tests to verify your work
+
+The user dictated:
+
+{transcript}
+
+Context from classification:
+- Subject: {classification.subject}
+- Key entities: {json.dumps(classification.entities)}
+- Action items: {json.dumps(classification.action_items)}
+
+Go ahead and implement this."""
+
+    def _submit_to_orchestrator(
+        self, prompt: str, project: str | None, reply_to: str | None
+    ) -> str:
+        """Bridge sync dispatcher to async orchestrator.
+
+        Uses the running event loop if available (FastAPI), otherwise
+        creates a temporary one.
+        """
+        coro = self._orchestrator.submit(
+            prompt=prompt,
+            project=project,
+            reply_to=reply_to,
+        )
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context (called from FastAPI) but the worker
+            # runs in a thread. Schedule the coroutine on the main loop.
+            import concurrent.futures
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            return future.result(timeout=10)
+        except RuntimeError:
+            # No running loop — we're in a plain thread. Create a temporary one.
+            return asyncio.run(coro)
 
     # ------------------------------------------------------------------
     # Intent handlers
@@ -386,6 +546,15 @@ Please explore the codebase and produce a concrete, actionable implementation pl
         ])
 
         return "\n".join(lines)
+
+    def _handle_code_request(self, **kwargs) -> dict:
+        """Fallback for code_request when no orchestrator is available.
+
+        Writes the request to the vault so it isn't lost.
+        """
+        dest_dir = self._vault_root / "inbox"
+        path = self._write_markdown(dest_dir, **kwargs)
+        return {"path": str(path), "action": "code_request_saved"}
 
     def _handle_task(self, **kwargs) -> dict:
         """Extract and write action items."""
