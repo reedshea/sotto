@@ -30,6 +30,7 @@ class Job:
     intent_metadata: str | None = None  # JSON blob from classifier
     dispatch_status: str | None = None  # pending_dispatch, dispatched, dispatch_failed
     dispatch_result: str | None = None  # JSON blob from dispatcher
+    reply_to: str | None = None  # alphanumeric ID if transcript is a reply (e.g. "A4F2")
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> Job:
@@ -92,6 +93,7 @@ class Database:
             "intent_metadata": "ALTER TABLE jobs ADD COLUMN intent_metadata TEXT",
             "dispatch_status": "ALTER TABLE jobs ADD COLUMN dispatch_status TEXT",
             "dispatch_result": "ALTER TABLE jobs ADD COLUMN dispatch_result TEXT",
+            "reply_to": "ALTER TABLE jobs ADD COLUMN reply_to TEXT",
         }
         for col, sql in migrations.items():
             if col not in existing:
@@ -163,6 +165,15 @@ class Database:
                    duration_seconds = ?, transcript = ?, error_message = ?, updated_at = ?
                WHERE uuid = ?""",
             (title, summary, output_path, duration_seconds, transcript, error_message, now, uuid),
+        )
+        self.conn.commit()
+
+    def update_job_reply_to(self, uuid: str, reply_to: str) -> None:
+        """Store the parsed reply-to ID for a job."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE jobs SET reply_to = ?, updated_at = ? WHERE uuid = ?",
+            (reply_to, now, uuid),
         )
         self.conn.commit()
 

@@ -57,6 +57,7 @@ class Dispatcher:
         privacy: str,
         pipeline: PipelineConfig,
         created_at: str,
+        reply_to: str | None = None,
     ) -> dict:
         """Dispatch a classified transcript to the appropriate handler.
 
@@ -88,6 +89,7 @@ class Dispatcher:
                 pipeline=pipeline,
                 created_at=created_at,
                 now=now,
+                reply_to=reply_to,
             )
             result["intent"] = intent
             result["dispatched_at"] = now.isoformat()
@@ -415,11 +417,14 @@ Please explore the codebase and produce a concrete, actionable implementation pl
         duration = kwargs["duration"]
         created_at = kwargs["created_at"]
         now = kwargs["now"]
+        reply_to = kwargs.get("reply_to")
 
         # YAML frontmatter for Obsidian
         tags = [f"sotto/{classification.intent}"]
         if classification.urgency == "high":
             tags.append("urgent")
+        if reply_to:
+            tags.append("sotto/reply")
 
         frontmatter_data = {
             "title": title,
@@ -432,6 +437,8 @@ Please explore the codebase and produce a concrete, actionable implementation pl
             "duration_seconds": round(duration, 1),
             "captured_at": created_at,
         }
+        if reply_to:
+            frontmatter_data["reply_to"] = reply_to
 
         # Build frontmatter manually for clean YAML
         fm_lines = ["---"]

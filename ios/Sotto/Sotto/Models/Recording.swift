@@ -36,6 +36,7 @@ struct Recording: Identifiable, Codable {
     var summary: String?
     var localFileURL: URL?
     var serverUUID: String?
+    var replyTo: String?
 
     var displayTitle: String {
         if let title = title {

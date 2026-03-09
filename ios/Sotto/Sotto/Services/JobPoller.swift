@@ -9,11 +9,13 @@ struct JobStatusResponse: Decodable {
     let transcript: String?
     let durationSeconds: Double?
     let errorMessage: String?
+    let replyTo: String?
 
     enum CodingKeys: String, CodingKey {
         case uuid, status, title, summary, transcript
         case durationSeconds = "duration_seconds"
         case errorMessage = "error_message"
+        case replyTo = "reply_to"
     }
 }
 
@@ -80,6 +82,7 @@ class JobPoller: ObservableObject {
         updated.status = newStatus
         if let title = response.title { updated.title = title }
         if let summary = response.summary { updated.summary = summary }
+        if let replyTo = response.replyTo { updated.replyTo = replyTo }
         store?.update(updated)
 
         if !hasActiveJobs { stop() }
