@@ -16,7 +16,7 @@ from .classifier import Classifier, ClassificationResult
 from .config import Config, PipelineConfig
 from .db import Database
 from .dispatcher import Dispatcher
-from .reply_parser import parse_reply
+from .reply_parser import extract_context, parse_reply
 
 logger = logging.getLogger("sotto.worker")
 
@@ -124,16 +124,24 @@ class Worker:
         logger.info("Transcribing %s", uuid)
         transcript, duration = self._transcribe(audio_path)
 
-        # Step 1b: Parse reply-to prefix (e.g. "Re: A4F2 ...")
-        reply_result = parse_reply(transcript)
-        reply_to = reply_result.reply_to
+        # Step 1b: Extract reply-to ID and project reference using local LLM.
+        # Falls back to regex if Ollama is unavailable.
+        project_names = list(self.config.projects.keys())
+        extraction = extract_context(
+            transcript=transcript,
+            project_names=project_names,
+            ollama_endpoint=self.config.ollama.endpoint,
+            model=self.config.pipelines.get("private", PipelineConfig()).model,
+        )
+        reply_to = extraction.reply_to
+        resolved_project = extraction.project
         if reply_to:
             logger.info("Detected reply-to ID '%s' in %s", reply_to, uuid)
             self.db.update_job_reply_to(uuid, reply_to)
-            # Use the body (prefix stripped) for downstream processing
-            transcript_body = reply_result.body
-        else:
-            transcript_body = transcript
+        if resolved_project:
+            logger.info("Matched project '%s' in %s", resolved_project, uuid)
+        # Use the body (prefix stripped) for downstream processing
+        transcript_body = extraction.body
 
         # Step 2: Classify intent (skipped in transcribe_only mode)
         classification = None
@@ -188,6 +196,7 @@ class Worker:
                     pipeline=pipeline,
                     created_at=job.created_at,
                     reply_to=reply_to,
+                    resolved_project=resolved_project,
                 )
                 self.db.update_job_dispatch(
                     uuid=uuid,

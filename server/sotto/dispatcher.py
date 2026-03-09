@@ -58,6 +58,7 @@ class Dispatcher:
         pipeline: PipelineConfig,
         created_at: str,
         reply_to: str | None = None,
+        resolved_project: str | None = None,
     ) -> dict:
         """Dispatch a classified transcript to the appropriate handler.
 
@@ -90,6 +91,7 @@ class Dispatcher:
                 created_at=created_at,
                 now=now,
                 reply_to=reply_to,
+                resolved_project=resolved_project,
             )
             result["intent"] = intent
             result["dispatched_at"] = now.isoformat()
@@ -167,7 +169,8 @@ class Dispatcher:
         now = kwargs["now"]
 
         # Resolve which project the user is talking about
-        project_name, project_path = self._resolve_project(classification)
+        resolved_project = kwargs.get("resolved_project")
+        project_name, project_path = self._resolve_project(classification, resolved_project)
 
         # Write initial plan-request note to vault
         dest_dir = self._vault_root / "plans"
@@ -213,8 +216,15 @@ class Dispatcher:
             result["repo_plan_path"] = str(plan_repo_path)
         return result
 
-    def _resolve_project(self, classification: ClassificationResult) -> tuple[str | None, str | None]:
+    def _resolve_project(
+        self,
+        classification: ClassificationResult,
+        resolved_project: str | None = None,
+    ) -> tuple[str | None, str | None]:
         """Match mentioned projects in the classification to configured projects.
+
+        If `resolved_project` is provided (from LLM extraction in the worker),
+        it takes priority over classification entity matching.
 
         Returns (project_name, project_path) or (None, None) if no match.
         """
@@ -222,7 +232,12 @@ class Dispatcher:
         if not projects:
             return None, None
 
-        # Check entities.projects from the classifier
+        # Prefer the LLM-resolved project from the extraction step
+        if resolved_project and resolved_project in projects:
+            proj = projects[resolved_project]
+            return resolved_project, str(Path(proj.path).expanduser())
+
+        # Fallback: check entities.projects from the classifier
         mentioned = [p.lower() for p in classification.entities.get("projects", [])]
 
         for name, proj in projects.items():
