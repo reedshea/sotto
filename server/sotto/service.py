@@ -98,6 +98,22 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         if config_path:
             app_args += f" --config {config_path}"
 
+    # Resolve config path to an absolute path so the service finds it
+    # regardless of which account (SYSTEM vs user) runs the process.
+    if config_path:
+        resolved_config = str(Path(config_path).expanduser().resolve())
+    else:
+        # Use the default config location, resolved to the *installing* user's home
+        default_cfg = Path("~/.config/sotto/config.yaml").expanduser()
+        resolved_config = str(default_cfg) if default_cfg.exists() else None
+
+    # Rebuild app_args with the resolved absolute config path
+    if resolved_config:
+        if sotto_exe.endswith("sotto.exe"):
+            app_args = f"start --config \"{resolved_config}\""
+        else:
+            app_args = f"-m sotto.cli start --config \"{resolved_config}\""
+
     try:
         # Install the service
         subprocess.run([nssm, "install", SERVICE_NAME, app_path, app_args], check=True)
@@ -107,11 +123,18 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         subprocess.run([nssm, "set", SERVICE_NAME, "Description", SERVICE_DESCRIPTION], check=True)
         subprocess.run([nssm, "set", SERVICE_NAME, "Start", "SERVICE_AUTO_START"], check=True)
 
+        # Set SOTTO_CONFIG env var so the process can find config even if ~ is wrong
+        if resolved_config:
+            subprocess.run(
+                [nssm, "set", SERVICE_NAME, "AppEnvironmentExtra", f"SOTTO_CONFIG={resolved_config}"],
+                check=True,
+            )
+
         # Configure restart on failure
         subprocess.run([nssm, "set", SERVICE_NAME, "AppExit", "Default", "Restart"], check=True)
         subprocess.run([nssm, "set", SERVICE_NAME, "AppRestartDelay", "5000"], check=True)
 
-        # Log stdout/stderr
+        # Log stdout/stderr — use absolute path based on installing user's home
         log_dir = Path("~/.local/share/sotto/logs").expanduser()
         log_dir.mkdir(parents=True, exist_ok=True)
         subprocess.run(
@@ -132,12 +155,16 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         )
 
         print(f"Service '{SERVICE_NAME}' installed successfully.")
+        if resolved_config:
+            print(f"Config: {resolved_config}")
+        else:
+            print("Config: using built-in defaults (no config file found)")
+        print(f"Logs:   {log_dir}")
         print()
         print("To start the service now:")
         print(f"  nssm start {SERVICE_NAME}")
         print()
         print("Or use Windows Services (services.msc) to start/stop it.")
-        print(f"Logs: {log_dir}")
         return True
 
     except subprocess.CalledProcessError as e:
@@ -179,14 +206,22 @@ def _status_windows() -> str | None:
 def _print_manual_nssm_instructions(config_path: str | None = None) -> None:
     """Print manual NSSM commands the user can copy-paste in an admin PowerShell."""
     sotto_exe = _find_sotto_exe()
+
+    # Resolve config to absolute path for the installing user
+    if config_path:
+        resolved_config = str(Path(config_path).expanduser().resolve())
+    else:
+        default_cfg = Path("~/.config/sotto/config.yaml").expanduser()
+        resolved_config = str(default_cfg) if default_cfg.exists() else None
+
     if sotto_exe.endswith("sotto.exe"):
         app_args = "start"
-        if config_path:
-            app_args += f" --config {config_path}"
+        if resolved_config:
+            app_args += f' --config "{resolved_config}"'
     else:
         app_args = "-m sotto.cli start"
-        if config_path:
-            app_args += f" --config {config_path}"
+        if resolved_config:
+            app_args += f' --config "{resolved_config}"'
 
     print("If you already have NSSM, run these commands in an Administrator PowerShell:")
     print()
@@ -195,6 +230,8 @@ def _print_manual_nssm_instructions(config_path: str | None = None) -> None:
     print(f'  nssm set {SERVICE_NAME} Start SERVICE_AUTO_START')
     print(f'  nssm set {SERVICE_NAME} AppExit Default Restart')
     print(f'  nssm set {SERVICE_NAME} AppRestartDelay 5000')
+    if resolved_config:
+        print(f'  nssm set {SERVICE_NAME} AppEnvironmentExtra "SOTTO_CONFIG={resolved_config}"')
     print(f"  nssm start {SERVICE_NAME}")
 
 
