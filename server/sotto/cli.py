@@ -101,6 +101,11 @@ def main() -> None:
     # sotto install-service
     svc_install = sub.add_parser("install-service", help="Install Sotto as a system service")
     svc_install.add_argument("--config", default=None, help="Config file path")
+    svc_install.add_argument(
+        "--run-as", default=None, metavar="USERNAME",
+        help="Windows user to run the service as (default: current user). "
+             "Required for Claude CLI auth.",
+    )
 
     # sotto uninstall-service
     sub.add_parser("uninstall-service", help="Remove Sotto system service")
@@ -115,7 +120,7 @@ def main() -> None:
     elif args.command == "start":
         cmd_start(args)
     elif args.command == "install-service":
-        install_service(args.config)
+        install_service(args.config, getattr(args, "run_as", None))
     elif args.command == "uninstall-service":
         uninstall_service()
     elif args.command == "status":

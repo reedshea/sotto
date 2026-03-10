@@ -39,10 +39,18 @@ def _find_sotto_exe() -> str:
     return sys.executable
 
 
-def install_service(config_path: str | None = None) -> bool:
-    """Install Sotto as a Windows service using NSSM, or generate a systemd unit on Linux."""
+def install_service(config_path: str | None = None, run_as: str | None = None) -> bool:
+    """Install Sotto as a Windows service using NSSM, or generate a systemd unit on Linux.
+
+    Args:
+        config_path: Path to config.yaml (resolved to absolute at install time).
+        run_as: Windows username to run the service as (e.g. "Reed").
+                Required for Claude CLI auth — the service needs to run under
+                the user account that authorized the CLI.
+                If not provided, defaults to the current user.
+    """
     if sys.platform == "win32":
-        return _install_windows_service(config_path)
+        return _install_windows_service(config_path, run_as)
     else:
         return _install_systemd_unit(config_path)
 
@@ -67,7 +75,7 @@ def service_status() -> str | None:
 # Windows (NSSM)
 # ---------------------------------------------------------------------------
 
-def _install_windows_service(config_path: str | None = None) -> bool:
+def _install_windows_service(config_path: str | None = None, run_as: str | None = None) -> bool:
     nssm = _find_nssm()
     if not nssm:
         print("NSSM not found on PATH.")
@@ -123,6 +131,27 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         subprocess.run([nssm, "set", SERVICE_NAME, "Description", SERVICE_DESCRIPTION], check=True)
         subprocess.run([nssm, "set", SERVICE_NAME, "Start", "SERVICE_AUTO_START"], check=True)
 
+        # Configure the service to run as the specified (or current) user.
+        # This is critical: the Claude CLI stores its OAuth token under the
+        # user profile, so the service must run as the user who authorized it.
+        if run_as is None:
+            run_as = os.environ.get("USERNAME") or os.environ.get("USER")
+        if run_as:
+            import getpass
+            print(f"The service will run as '{run_as}'.")
+            print("Enter the Windows password for this account (needed by NSSM):")
+            password = getpass.getpass("Password: ")
+            # Use .\ prefix for local accounts
+            account = run_as if "\\" in run_as else f".\\{run_as}"
+            subprocess.run(
+                [nssm, "set", SERVICE_NAME, "ObjectName", account, password],
+                check=True,
+            )
+            print(f"Service configured to run as {account}.")
+        else:
+            print("WARNING: Could not determine current user. Service will run as LocalSystem.")
+            print("Claude CLI auth will NOT work. Re-run with: sotto install-service --run-as YOUR_USERNAME")
+
         # Set SOTTO_CONFIG env var so the process can find config even if ~ is wrong
         if resolved_config:
             subprocess.run(
@@ -155,6 +184,7 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         )
 
         print(f"Service '{SERVICE_NAME}' installed successfully.")
+        print(f"Run as: {account if run_as else 'LocalSystem'}")
         if resolved_config:
             print(f"Config: {resolved_config}")
         else:
