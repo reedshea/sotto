@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import uuid as uuid_mod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -209,8 +210,19 @@ class Orchestrator:
 
         self.store = SessionStore(db_path)
 
-        # Semaphore to limit concurrent Claude CLI processes
-        self._semaphore = asyncio.Semaphore(self.orch_config.max_concurrent)
+        # Persistent background event loop for running CLI tasks.
+        # This avoids the problem where asyncio.run() creates a temporary loop
+        # that gets torn down (cancelling tasks) as soon as submit() returns.
+        self._loop = asyncio.new_event_loop()
+        self._loop_thread = threading.Thread(
+            target=self._loop.run_forever, daemon=True, name="orchestrator-loop"
+        )
+        self._loop_thread.start()
+
+        # Semaphore to limit concurrent Claude CLI processes.
+        # Created lazily on first use inside the background loop.
+        self._max_concurrent = self.orch_config.max_concurrent
+        self._semaphore: asyncio.Semaphore | None = None
 
         # Track running asyncio tasks for cleanup
         self._running_tasks: dict[str, asyncio.Task] = {}
@@ -273,16 +285,44 @@ class Orchestrator:
         )
         self.store.insert_task(task)
 
-        # Launch the async execution
-        atask = asyncio.create_task(self._execute(task_id))
-        self._running_tasks[task_id] = atask
-        atask.add_done_callback(lambda _: self._running_tasks.pop(task_id, None))
+        # Launch the async execution on our persistent background loop.
+        # asyncio.run_coroutine_threadsafe is safe to call from any thread.
+        future = asyncio.run_coroutine_threadsafe(
+            self._execute(task_id), self._loop
+        )
+        # Wrap the concurrent.futures.Future so we can track it
+        self._running_tasks[task_id] = future
+        future.add_done_callback(lambda _: self._running_tasks.pop(task_id, None))
 
         logger.info(
             "Submitted task %s (project=%s, reply_to=%s, resume=%s)",
             task_id, project, reply_to, session_id or "new",
         )
         return task_id
+
+    def submit_sync(
+        self,
+        prompt: str,
+        project: str | None = None,
+        reply_to: str | None = None,
+        project_path: str | None = None,
+    ) -> str:
+        """Synchronous wrapper for submit() — safe to call from any thread.
+
+        Schedules the submit on the orchestrator's persistent loop and blocks
+        until the task_id is returned. The actual _execute task continues
+        running in the background.
+        """
+        future = asyncio.run_coroutine_threadsafe(
+            self.submit(
+                prompt=prompt,
+                project=project,
+                reply_to=reply_to,
+                project_path=project_path,
+            ),
+            self._loop,
+        )
+        return future.result(timeout=10)
 
     def check(self, task_id: str) -> TaskStatus | None:
         """Check the status of a submitted task."""
@@ -298,20 +338,19 @@ class Orchestrator:
 
     async def wait(self, task_id: str) -> TaskStatus:
         """Wait for a task to complete and return its final status."""
-        atask = self._running_tasks.get(task_id)
-        if atask:
-            await atask
+        future = self._running_tasks.get(task_id)
+        if future:
+            # Wait for the concurrent.futures.Future from the background loop
+            await asyncio.wrap_future(future)
         return self.store.get_task(task_id)
 
     async def shutdown(self) -> None:
         """Cancel all running tasks and clean up."""
-        for task_id, atask in list(self._running_tasks.items()):
-            atask.cancel()
+        for task_id, future in list(self._running_tasks.items()):
+            future.cancel()
             logger.info("Cancelled task %s", task_id)
-        if self._running_tasks:
-            await asyncio.gather(
-                *self._running_tasks.values(), return_exceptions=True
-            )
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._loop_thread.join(timeout=5)
         self.store.close()
 
     # ------------------------------------------------------------------
@@ -320,6 +359,8 @@ class Orchestrator:
 
     async def _execute(self, task_id: str) -> None:
         """Acquire semaphore slot and run the Claude CLI process."""
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._max_concurrent)
         async with self._semaphore:
             self.store.update_task(task_id, state="running")
             task = self.store.get_task(task_id)
