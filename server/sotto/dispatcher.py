@@ -242,24 +242,20 @@ Go ahead and implement this."""
     ) -> str:
         """Bridge sync dispatcher to async orchestrator.
 
-        Uses the running event loop if available (FastAPI), otherwise
-        creates a temporary one.
+        The orchestrator is async (it spawns long-running CLI processes), but the
+        dispatcher is called from the sync worker thread. We need to:
+          1. Schedule submit() on the orchestrator's event loop
+          2. Let the _execute task keep running after submit() returns
+
+        If we used asyncio.run() here, it would create a temporary loop, run
+        submit(), then tear down the loop — cancelling the _execute task immediately.
+        Instead, we ensure the orchestrator has a persistent background loop.
         """
-        coro = self._orchestrator.submit(
+        return self._orchestrator.submit_sync(
             prompt=prompt,
             project=project,
             reply_to=reply_to,
         )
-        try:
-            loop = asyncio.get_running_loop()
-            # We're in an async context (called from FastAPI) but the worker
-            # runs in a thread. Schedule the coroutine on the main loop.
-            import concurrent.futures
-            future = asyncio.run_coroutine_threadsafe(coro, loop)
-            return future.result(timeout=10)
-        except RuntimeError:
-            # No running loop — we're in a plain thread. Create a temporary one.
-            return asyncio.run(coro)
 
     # ------------------------------------------------------------------
     # Intent handlers

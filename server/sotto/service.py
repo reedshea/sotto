@@ -10,6 +10,7 @@ On non-Windows platforms, falls back to a systemd unit file generator.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
