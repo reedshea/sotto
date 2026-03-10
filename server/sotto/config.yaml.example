@@ -41,3 +41,60 @@ auth:
   # Bearer token(s) for authenticating iOS app uploads
   tokens:
     - "change-me-to-a-real-token"
+
+# Named output destinations — add as many as you need.
+# Each key is a name, each value is a path.
+destinations:
+  obsidian_vault: ~/.local/share/sotto/vault
+  # e-reader: G:\My Drive\Rakuten Kobo
+
+# Pattern triggers for fast-path classification (skip LLM)
+patterns:
+  - trigger: "note to self"
+    intent: note_to_self
+  - trigger: "meeting with"
+    intent: meeting_debrief
+  - trigger: "plan for"
+    intent: plan_request
+  - trigger: "create a plan"
+    intent: plan_request
+  - trigger: "I want to work on"
+    intent: plan_request
+  - trigger: "investigate"
+    intent: plan_request
+  - trigger: "go implement"
+    intent: code_request
+  - trigger: "go build"
+    intent: code_request
+  - trigger: "go fix"
+    intent: code_request
+  - trigger: "implement"
+    intent: code_request
+  - trigger: "fix the"
+    intent: code_request
+
+# Projects that can be targeted by plan_request dictations.
+# The classifier extracts project names from your dictation and matches
+# them to these entries. If only one project is configured, it's used
+# as the default.
+projects:
+  # Short form — just a path:
+  # sotto: ~/sotto
+  #
+  # Full form with aliases:
+  # sotto:
+  #   path: ~/sotto
+  #   aliases: ["soto", "voice app"]
+
+# Orchestrator — async Claude Code CLI session manager.
+# This is the glue layer: voice memo -> Claude Code session -> report.
+# Requires `claude` CLI on PATH.
+orchestrator:
+  # How many Claude CLI instances can run at once
+  max_concurrent: 4
+  # Per-task timeout in seconds
+  timeout_seconds: 600
+  # Where to store session state (default: output_dir/orchestrator.db)
+  # session_store_path: ~/.local/share/sotto/orchestrator.db
+  # Where to write completed reports (default: vault_root/reports)
+  # report_dir: ~/.local/share/sotto/vault/reports
