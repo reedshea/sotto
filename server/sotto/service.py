@@ -39,10 +39,18 @@ def _find_sotto_exe() -> str:
     return sys.executable
 
 
-def install_service(config_path: str | None = None) -> bool:
-    """Install Sotto as a Windows service using NSSM, or generate a systemd unit on Linux."""
+def install_service(config_path: str | None = None, run_as: str | None = None) -> bool:
+    """Install Sotto as a Windows service using NSSM, or generate a systemd unit on Linux.
+
+    Args:
+        config_path: Path to config.yaml (resolved to absolute at install time).
+        run_as: Windows username to run the service as (e.g. "Reed").
+                Required for Claude CLI auth — the service needs to run under
+                the user account that authorized the CLI.
+                If not provided, defaults to the current user.
+    """
     if sys.platform == "win32":
-        return _install_windows_service(config_path)
+        return _install_windows_service(config_path, run_as)
     else:
         return _install_systemd_unit(config_path)
 
@@ -67,7 +75,7 @@ def service_status() -> str | None:
 # Windows (NSSM)
 # ---------------------------------------------------------------------------
 
-def _install_windows_service(config_path: str | None = None) -> bool:
+def _install_windows_service(config_path: str | None = None, run_as: str | None = None) -> bool:
     nssm = _find_nssm()
     if not nssm:
         print("NSSM not found on PATH.")
@@ -98,6 +106,22 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         if config_path:
             app_args += f" --config {config_path}"
 
+    # Resolve config path to an absolute path so the service finds it
+    # regardless of which account (SYSTEM vs user) runs the process.
+    if config_path:
+        resolved_config = str(Path(config_path).expanduser().resolve())
+    else:
+        # Use the default config location, resolved to the *installing* user's home
+        default_cfg = Path("~/.config/sotto/config.yaml").expanduser()
+        resolved_config = str(default_cfg) if default_cfg.exists() else None
+
+    # Rebuild app_args with the resolved absolute config path
+    if resolved_config:
+        if sotto_exe.endswith("sotto.exe"):
+            app_args = f"start --config \"{resolved_config}\""
+        else:
+            app_args = f"-m sotto.cli start --config \"{resolved_config}\""
+
     try:
         # Install the service
         subprocess.run([nssm, "install", SERVICE_NAME, app_path, app_args], check=True)
@@ -107,11 +131,39 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         subprocess.run([nssm, "set", SERVICE_NAME, "Description", SERVICE_DESCRIPTION], check=True)
         subprocess.run([nssm, "set", SERVICE_NAME, "Start", "SERVICE_AUTO_START"], check=True)
 
+        # Configure the service to run as the specified (or current) user.
+        # This is critical: the Claude CLI stores its OAuth token under the
+        # user profile, so the service must run as the user who authorized it.
+        if run_as is None:
+            run_as = os.environ.get("USERNAME") or os.environ.get("USER")
+        if run_as:
+            import getpass
+            print(f"The service will run as '{run_as}'.")
+            print("Enter the Windows password for this account (needed by NSSM):")
+            password = getpass.getpass("Password: ")
+            # Use .\ prefix for local accounts
+            account = run_as if "\\" in run_as else f".\\{run_as}"
+            subprocess.run(
+                [nssm, "set", SERVICE_NAME, "ObjectName", account, password],
+                check=True,
+            )
+            print(f"Service configured to run as {account}.")
+        else:
+            print("WARNING: Could not determine current user. Service will run as LocalSystem.")
+            print("Claude CLI auth will NOT work. Re-run with: sotto install-service --run-as YOUR_USERNAME")
+
+        # Set SOTTO_CONFIG env var so the process can find config even if ~ is wrong
+        if resolved_config:
+            subprocess.run(
+                [nssm, "set", SERVICE_NAME, "AppEnvironmentExtra", f"SOTTO_CONFIG={resolved_config}"],
+                check=True,
+            )
+
         # Configure restart on failure
         subprocess.run([nssm, "set", SERVICE_NAME, "AppExit", "Default", "Restart"], check=True)
         subprocess.run([nssm, "set", SERVICE_NAME, "AppRestartDelay", "5000"], check=True)
 
-        # Log stdout/stderr
+        # Log stdout/stderr — use absolute path based on installing user's home
         log_dir = Path("~/.local/share/sotto/logs").expanduser()
         log_dir.mkdir(parents=True, exist_ok=True)
         subprocess.run(
@@ -132,12 +184,17 @@ def _install_windows_service(config_path: str | None = None) -> bool:
         )
 
         print(f"Service '{SERVICE_NAME}' installed successfully.")
+        print(f"Run as: {account if run_as else 'LocalSystem'}")
+        if resolved_config:
+            print(f"Config: {resolved_config}")
+        else:
+            print("Config: using built-in defaults (no config file found)")
+        print(f"Logs:   {log_dir}")
         print()
         print("To start the service now:")
         print(f"  nssm start {SERVICE_NAME}")
         print()
         print("Or use Windows Services (services.msc) to start/stop it.")
-        print(f"Logs: {log_dir}")
         return True
 
     except subprocess.CalledProcessError as e:
@@ -179,14 +236,22 @@ def _status_windows() -> str | None:
 def _print_manual_nssm_instructions(config_path: str | None = None) -> None:
     """Print manual NSSM commands the user can copy-paste in an admin PowerShell."""
     sotto_exe = _find_sotto_exe()
+
+    # Resolve config to absolute path for the installing user
+    if config_path:
+        resolved_config = str(Path(config_path).expanduser().resolve())
+    else:
+        default_cfg = Path("~/.config/sotto/config.yaml").expanduser()
+        resolved_config = str(default_cfg) if default_cfg.exists() else None
+
     if sotto_exe.endswith("sotto.exe"):
         app_args = "start"
-        if config_path:
-            app_args += f" --config {config_path}"
+        if resolved_config:
+            app_args += f' --config "{resolved_config}"'
     else:
         app_args = "-m sotto.cli start"
-        if config_path:
-            app_args += f" --config {config_path}"
+        if resolved_config:
+            app_args += f' --config "{resolved_config}"'
 
     print("If you already have NSSM, run these commands in an Administrator PowerShell:")
     print()
@@ -195,6 +260,8 @@ def _print_manual_nssm_instructions(config_path: str | None = None) -> None:
     print(f'  nssm set {SERVICE_NAME} Start SERVICE_AUTO_START')
     print(f'  nssm set {SERVICE_NAME} AppExit Default Restart')
     print(f'  nssm set {SERVICE_NAME} AppRestartDelay 5000')
+    if resolved_config:
+        print(f'  nssm set {SERVICE_NAME} AppEnvironmentExtra "SOTTO_CONFIG={resolved_config}"')
     print(f"  nssm start {SERVICE_NAME}")
 
 
