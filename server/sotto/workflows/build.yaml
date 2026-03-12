@@ -1,0 +1,49 @@
+# Build workflow — implements changes and delivers a pull request.
+#
+# When you say "go build..." or any utterance classified as code_request,
+# Claude creates a branch, implements changes, runs tests, and opens a PR.
+#
+# The result is a notification written to your e-reader with the PR link,
+# plus the full output in your Obsidian vault.
+#
+# Customize the prompt below to change how Claude approaches implementation.
+
+name: build
+triggers:
+  - intent: code_request
+
+prompt: |
+  You received the following voice dictation from the user. They want you
+  to implement changes in this codebase and deliver them as a pull request.
+
+  Please:
+  1. Understand what they're asking for
+  2. Explore the relevant parts of the codebase
+  3. Create a new git branch (e.g., feat/short-description or fix/short-description)
+  4. Implement the changes
+  5. Run any relevant tests to verify your work
+  6. Commit with a clear commit message
+  7. Push the branch and create a pull request
+
+  The user said: {{transcript}}
+
+  Context:
+  - Subject: {{subject}}
+  - Key entities: {{entities}}
+  - Action items: {{action_items}}
+
+  Important:
+  - Create the PR against the main/default branch
+  - Include a clear PR title and description
+  - If tests fail, fix them before creating the PR
+  - Use `gh pr create` if available, otherwise push and note the branch name
+
+  Go ahead and implement this.
+
+outputs:
+  - destination: obsidian_vault
+    path: reports/
+    format: markdown
+  - destination: e-reader
+    path: sotto-reports/
+    format: html

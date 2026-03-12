@@ -254,16 +254,16 @@ class TestWriteReport:
 
 
 class TestTaskIdGeneration:
-    def test_generates_8char_hex(self):
+    def test_generates_4char_hex(self):
         tid = Orchestrator._generate_task_id()
-        assert len(tid) == 8
+        assert len(tid) == 4
         assert tid == tid.upper()
         # Should be valid hex
         int(tid, 16)
 
     def test_unique_ids(self):
-        ids = {Orchestrator._generate_task_id() for _ in range(100)}
-        assert len(ids) == 100
+        ids = {Orchestrator._generate_task_id() for _ in range(20)}
+        assert len(ids) == 20
 
 
 # ------------------------------------------------------------------
