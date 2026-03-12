@@ -98,3 +98,35 @@ orchestrator:
   # session_store_path: ~/.local/share/sotto/orchestrator.db
   # Where to write completed reports (default: vault_root/reports)
   # report_dir: ~/.local/share/sotto/vault/reports
+  # Allow Claude CLI to edit files and run shell commands.
+  # Required for code_request (PR creation). Plan requests benefit from
+  # shell access for codebase exploration. Default: true
+  # allow_edits: true
+
+# ─── Setup Checklist ───────────────────────────────────────────
+# Before voice-to-action (plan/code requests) will work:
+#
+# 1. Configure at least one project above with a valid local path
+#    Example:
+#      projects:
+#        sotto:
+#          path: ~/sotto
+#          aliases: ["soto", "voice app"]
+#
+# 2. Install and authenticate the Claude CLI:
+#    npm install -g @anthropic-ai/claude-code
+#    claude  # (follow OAuth prompts)
+#
+# 3. (Optional) Install and authenticate the GitHub CLI for PR creation:
+#    https://cli.github.com/
+#    gh auth login
+#    Without gh, code_request will push a branch but skip PR creation.
+#
+# 4. Ensure the Sotto service runs as YOUR user (not SYSTEM):
+#    sotto install-service --run-as YOUR_USERNAME
+#    This is required so claude and gh can find your auth tokens.
+#
+# 5. Verify:
+#    claude --version    # should print version
+#    gh auth status      # should show logged in (if installed)
+#    sotto status        # should show service running

@@ -219,12 +219,15 @@ Please explore the codebase and produce a concrete, actionable implementation pl
 
     def _build_code_prompt(self, transcript: str, classification: ClassificationResult) -> str:
         """Build a Claude prompt for code_request intent."""
-        return f"""You received the following voice dictation from the user. They want you to implement changes in this codebase. Please:
+        return f"""You received the following voice dictation from the user. They want you to implement changes in this codebase and deliver them as a pull request. Please:
 
 1. Understand what they're asking for
 2. Explore the relevant parts of the codebase
-3. Implement the changes
-4. Run any relevant tests to verify your work
+3. Create a new git branch with a descriptive name (e.g., feat/short-description or fix/short-description)
+4. Implement the changes
+5. Run any relevant tests to verify your work
+6. Commit your changes with a clear commit message
+7. Push the branch and create a pull request
 
 The user dictated:
 
@@ -234,6 +237,12 @@ Context from classification:
 - Subject: {classification.subject}
 - Key entities: {json.dumps(classification.entities)}
 - Action items: {json.dumps(classification.action_items)}
+
+Important:
+- Create the PR against the main/default branch
+- Include a clear PR title and description summarizing what was changed and why
+- If tests fail, fix them before creating the PR
+- To create the PR, try `gh pr create`. If `gh` is not available, just push the branch and note its name in your output so the user can create the PR manually.
 
 Go ahead and implement this."""
 
