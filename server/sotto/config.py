@@ -76,6 +76,7 @@ class OrchestratorConfig:
     timeout_seconds: int = 600
     session_store_path: str | None = None  # Defaults to output_dir/orchestrator.db
     report_dir: str | None = None  # Defaults to vault_root/reports
+    allow_edits: bool = True  # Pass --dangerously-skip-permissions to Claude CLI
 
 
 @dataclass

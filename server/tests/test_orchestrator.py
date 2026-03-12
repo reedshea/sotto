@@ -338,10 +338,64 @@ async def test_submit_resumes_session(tmp_config):
     assert status.state == "completed"
     assert status.session_id == "existing-sess-42"
 
-    # Verify --resume was passed
+    # Verify --resume and --dangerously-skip-permissions were passed
     call_args = mock_exec.call_args
     assert "--resume" in call_args[0]
     assert "existing-sess-42" in call_args[0]
+    assert "--dangerously-skip-permissions" in call_args[0]
+
+    await orch.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_submit_passes_permissions_flag(tmp_config):
+    """Verify --dangerously-skip-permissions is passed when allow_edits is True."""
+    orch = Orchestrator(tmp_config)
+
+    mock_output = json.dumps({
+        "type": "result",
+        "session_id": "sess-perm-1",
+        "result": "Done",
+    })
+
+    mock_proc = AsyncMock()
+    mock_proc.communicate = AsyncMock(return_value=(mock_output.encode(), b""))
+    mock_proc.returncode = 0
+    mock_proc.kill = MagicMock()
+
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+        task_id = await orch.submit(prompt="implement changes", project="sotto")
+        await orch.wait(task_id)
+
+    call_args = mock_exec.call_args
+    assert "--dangerously-skip-permissions" in call_args[0]
+
+    await orch.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_submit_without_permissions_flag(tmp_config):
+    """Verify --dangerously-skip-permissions is NOT passed when allow_edits is False."""
+    tmp_config.orchestrator.allow_edits = False
+    orch = Orchestrator(tmp_config)
+
+    mock_output = json.dumps({
+        "type": "result",
+        "session_id": "sess-noperm-1",
+        "result": "Read-only output",
+    })
+
+    mock_proc = AsyncMock()
+    mock_proc.communicate = AsyncMock(return_value=(mock_output.encode(), b""))
+    mock_proc.returncode = 0
+    mock_proc.kill = MagicMock()
+
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+        task_id = await orch.submit(prompt="explore the codebase")
+        await orch.wait(task_id)
+
+    call_args = mock_exec.call_args
+    assert "--dangerously-skip-permissions" not in call_args[0]
 
     await orch.shutdown()
 

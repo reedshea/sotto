@@ -370,6 +370,7 @@ class Orchestrator:
                     prompt=task.prompt,
                     cwd=task.project_path,
                     session_id=task.session_id,
+                    allow_edits=self.orch_config.allow_edits,
                 )
 
                 # Write report
@@ -414,6 +415,7 @@ class Orchestrator:
         prompt: str,
         cwd: str | None = None,
         session_id: str | None = None,
+        allow_edits: bool = True,
     ) -> tuple[str, str]:
         """Invoke the Claude Code CLI and return (session_id, output).
 
@@ -421,6 +423,8 @@ class Orchestrator:
         structured results including the session ID for later resumption.
         """
         cmd = ["claude", "-p", prompt, "--output-format", "json"]
+        if allow_edits:
+            cmd.append("--dangerously-skip-permissions")
 
         if session_id:
             cmd.extend(["--resume", session_id])
