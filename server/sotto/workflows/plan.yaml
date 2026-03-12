@@ -1,0 +1,41 @@
+# Plan workflow — generates an implementation plan from a voice memo.
+#
+# When you say "create a plan for..." or any utterance classified as plan_request,
+# Claude explores the codebase and produces a detailed plan.
+#
+# The result is written to your Obsidian vault as markdown and to your
+# e-reader as HTML so you can review it offline.
+#
+# Customize the prompt below to change how Claude approaches planning.
+
+name: plan
+triggers:
+  - intent: plan_request
+
+prompt: |
+  You received the following voice dictation from the user describing work
+  they want planned on this codebase. Please:
+
+  1. Explore the relevant parts of the codebase to understand the current state
+  2. Create a detailed implementation plan based on what they described
+  3. Include phases, risks, and testing strategy
+  4. Output the plan in markdown format
+
+  Do NOT implement anything yet — just plan.
+
+  The user said: {{transcript}}
+
+  Context:
+  - Subject: {{subject}}
+  - Key entities: {{entities}}
+  - Action items: {{action_items}}
+
+  Please explore the codebase and produce a concrete, actionable plan.
+
+outputs:
+  - destination: obsidian_vault
+    path: reports/
+    format: markdown
+  - destination: e-reader
+    path: sotto-reports/
+    format: html

@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from .classifier import ClassificationResult
-from .config import Config, PipelineConfig
+from .config import Config, PipelineConfig, WorkflowConfig
 
 if TYPE_CHECKING:
     from .orchestrator import Orchestrator
@@ -160,6 +160,25 @@ class Dispatcher:
                 return True
         return False
 
+    def _find_workflow(self, intent: str) -> WorkflowConfig | None:
+        """Find a workflow matching the given intent."""
+        for wf in self.config.workflows:
+            if wf.matches_intent(intent):
+                return wf
+        return None
+
+    def _render_workflow_prompt(
+        self, workflow: WorkflowConfig, transcript: str, classification: ClassificationResult
+    ) -> str:
+        """Render a workflow prompt template with variable substitution."""
+        prompt = workflow.prompt
+        prompt = prompt.replace("{{transcript}}", transcript)
+        prompt = prompt.replace("{{subject}}", classification.subject or "")
+        prompt = prompt.replace("{{entities}}", json.dumps(classification.entities))
+        prompt = prompt.replace("{{action_items}}", json.dumps(classification.action_items))
+        prompt = prompt.replace("{{reasoning}}", classification.reasoning or "")
+        return prompt
+
     def _handle_orchestrator(
         self,
         transcript: str,
@@ -170,11 +189,16 @@ class Dispatcher:
     ) -> dict:
         """Submit work to the orchestrator (Claude Code CLI).
 
-        Builds a prompt appropriate for the intent and submits it.
+        If a workflow is defined for this intent, uses its prompt template.
+        Otherwise falls back to the hardcoded prompt builders.
         Returns immediately — the orchestrator runs async.
         """
-        # Build the Claude prompt based on intent
-        if intent == "plan_request":
+        # Check for a user-defined workflow first
+        workflow = self._find_workflow(intent)
+
+        if workflow and workflow.prompt:
+            prompt = self._render_workflow_prompt(workflow, transcript, classification)
+        elif intent == "plan_request":
             prompt = self._build_plan_prompt(transcript, classification)
         elif intent == "code_request":
             prompt = self._build_code_prompt(transcript, classification)
@@ -187,6 +211,7 @@ class Dispatcher:
             prompt=prompt,
             project=resolved_project,
             reply_to=reply_to,
+            intent=intent,
         )
 
         return {
@@ -247,7 +272,8 @@ Important:
 Go ahead and implement this."""
 
     def _submit_to_orchestrator(
-        self, prompt: str, project: str | None, reply_to: str | None
+        self, prompt: str, project: str | None, reply_to: str | None,
+        intent: str | None = None,
     ) -> str:
         """Bridge sync dispatcher to async orchestrator.
 
@@ -264,6 +290,7 @@ Go ahead and implement this."""
             prompt=prompt,
             project=project,
             reply_to=reply_to,
+            intent=intent,
         )
 
     # ------------------------------------------------------------------

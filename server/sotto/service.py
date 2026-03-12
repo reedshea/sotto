@@ -113,7 +113,8 @@ def _install_windows_service(config_path: str | None = None, run_as: str | None 
         resolved_config = str(Path(config_path).expanduser().resolve())
     else:
         # Use the default config location, resolved to the *installing* user's home
-        default_cfg = Path("~/.config/sotto/config.yaml").expanduser()
+        from .config import _resolve_config_path
+        default_cfg = _resolve_config_path()
         resolved_config = str(default_cfg) if default_cfg.exists() else None
 
     # Rebuild app_args with the resolved absolute config path
@@ -242,7 +243,8 @@ def _print_manual_nssm_instructions(config_path: str | None = None) -> None:
     if config_path:
         resolved_config = str(Path(config_path).expanduser().resolve())
     else:
-        default_cfg = Path("~/.config/sotto/config.yaml").expanduser()
+        from .config import _resolve_config_path
+        default_cfg = _resolve_config_path()
         resolved_config = str(default_cfg) if default_cfg.exists() else None
 
     if sotto_exe.endswith("sotto.exe"):

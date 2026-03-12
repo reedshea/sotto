@@ -9,7 +9,9 @@ from pathlib import Path
 import yaml
 
 
-DEFAULT_CONFIG_PATH = Path("~/.config/sotto/config.yaml").expanduser()
+DEFAULT_SOTTO_DIR = Path("~/.sotto").expanduser()
+DEFAULT_CONFIG_PATH = DEFAULT_SOTTO_DIR / "config.yaml"
+_LEGACY_CONFIG_PATH = Path("~/.config/sotto/config.yaml").expanduser()
 DEFAULT_OUTPUT_DIR = Path("~/.local/share/sotto").expanduser()
 
 
@@ -70,6 +72,27 @@ class PatternConfig:
 
 
 @dataclass
+class WorkflowOutput:
+    """A single output destination for a workflow."""
+    destination: str = "obsidian_vault"
+    path: str = ""
+    format: str = "markdown"  # markdown, html, txt
+    template: str | None = None  # optional Jinja-style template override
+
+
+@dataclass
+class WorkflowConfig:
+    """A user-defined workflow that maps intents to agent behavior and outputs."""
+    name: str = ""
+    triggers: list[dict] = field(default_factory=list)  # [{"intent": "plan_request"}, ...]
+    prompt: str = ""  # prompt template with {{variable}} placeholders
+    outputs: list[WorkflowOutput] = field(default_factory=list)
+
+    def matches_intent(self, intent: str) -> bool:
+        return any(t.get("intent") == intent for t in self.triggers)
+
+
+@dataclass
 class OrchestratorConfig:
     """Configuration for the async Claude Code CLI orchestrator layer."""
     max_concurrent: int = 4
@@ -114,6 +137,7 @@ class Config:
     patterns: list[PatternConfig] = field(default_factory=list)
     projects: dict[str, ProjectConfig] = field(default_factory=dict)
     orchestrator: OrchestratorConfig = field(default_factory=OrchestratorConfig)
+    workflows: list[WorkflowConfig] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.pipelines:
@@ -133,11 +157,57 @@ class Config:
         self.storage.completed_dir.mkdir(parents=True, exist_ok=True)
 
 
+def _resolve_config_path() -> Path:
+    """Find the config file, checking ~/.sotto/ first, then legacy ~/.config/sotto/."""
+    if DEFAULT_CONFIG_PATH.exists():
+        return DEFAULT_CONFIG_PATH
+    if _LEGACY_CONFIG_PATH.exists():
+        return _LEGACY_CONFIG_PATH
+    # Default to new location even if it doesn't exist yet
+    return DEFAULT_CONFIG_PATH
+
+
+def _load_workflow_file(path: Path) -> WorkflowConfig | None:
+    """Load a single workflow YAML file."""
+    try:
+        with open(path) as f:
+            raw = yaml.safe_load(f) or {}
+        outputs = []
+        for out in raw.get("outputs", []):
+            outputs.append(WorkflowOutput(**out))
+        return WorkflowConfig(
+            name=raw.get("name", path.stem),
+            triggers=raw.get("triggers", []),
+            prompt=raw.get("prompt", ""),
+            outputs=outputs,
+        )
+    except Exception:
+        return None
+
+
+def load_workflows(workflows_dir: Path | None = None) -> list[WorkflowConfig]:
+    """Load all workflow YAML files from the workflows directory."""
+    if workflows_dir is None:
+        workflows_dir = DEFAULT_SOTTO_DIR / "workflows"
+    if not workflows_dir.is_dir():
+        return []
+    workflows = []
+    for path in sorted(workflows_dir.glob("*.yaml")):
+        wf = _load_workflow_file(path)
+        if wf:
+            workflows.append(wf)
+    for path in sorted(workflows_dir.glob("*.yml")):
+        wf = _load_workflow_file(path)
+        if wf:
+            workflows.append(wf)
+    return workflows
+
+
 def load_config(path: Path | None = None) -> Config:
     """Load configuration from a YAML file."""
     if path is None:
         env_path = os.environ.get("SOTTO_CONFIG")
-        path = Path(env_path) if env_path else DEFAULT_CONFIG_PATH
+        path = Path(env_path) if env_path else _resolve_config_path()
 
     if not path.exists():
         return Config()
@@ -175,6 +245,10 @@ def load_config(path: Path | None = None) -> Config:
 
     orchestrator = OrchestratorConfig(**raw.get("orchestrator", {}))
 
+    # Load workflows from the directory next to the config file
+    workflows_dir = path.parent / "workflows"
+    workflows = load_workflows(workflows_dir)
+
     return Config(
         storage=storage,
         pipelines=pipelines,
@@ -187,4 +261,5 @@ def load_config(path: Path | None = None) -> Config:
         patterns=patterns,
         projects=projects,
         orchestrator=orchestrator,
+        workflows=workflows,
     )

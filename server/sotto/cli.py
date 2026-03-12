@@ -39,7 +39,22 @@ def cmd_init(args: argparse.Namespace) -> None:
     except (FileNotFoundError, TypeError):
         dest.write_text(_minimal_config(), encoding="utf-8")
 
+    # Copy seed workflow files
+    workflows_dir = dest.parent / "workflows"
+    workflows_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        wf_pkg = importlib.resources.files("sotto").joinpath("workflows")
+        for wf_name in ("plan.yaml", "build.yaml"):
+            wf_ref = wf_pkg.joinpath(wf_name)
+            with importlib.resources.as_file(wf_ref) as wf_src:
+                wf_dest = workflows_dir / wf_name
+                if not wf_dest.exists() or args.force:
+                    shutil.copy(wf_src, wf_dest)
+    except (FileNotFoundError, TypeError):
+        pass  # No bundled workflows available
+
     print(f"Config written to {dest}")
+    print(f"Workflows directory: {workflows_dir}")
     print("Edit this file to set your API keys, model preferences, and output directory.")
 
 

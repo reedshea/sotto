@@ -36,7 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .config import Config, OrchestratorConfig
+from .config import Config, OrchestratorConfig, WorkflowConfig
+from .converters import md_to_html
 
 logger = logging.getLogger("sotto.orchestrator")
 
@@ -55,6 +56,7 @@ class TaskStatus:
     output: str | None = None
     error: str | None = None
     report_path: str | None = None
+    intent: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -92,6 +94,7 @@ class SessionStore:
                 output TEXT,
                 error TEXT,
                 report_path TEXT,
+                intent TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -113,12 +116,13 @@ class SessionStore:
         self.conn.execute(
             """INSERT INTO tasks
                (task_id, state, session_id, project, project_path, reply_to,
-                prompt, output, error, report_path, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                prompt, output, error, report_path, intent, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 task.task_id, task.state, task.session_id, task.project,
                 task.project_path, task.reply_to, task.prompt, task.output,
-                task.error, task.report_path, task.created_at, task.updated_at,
+                task.error, task.report_path, task.intent,
+                task.created_at, task.updated_at,
             ),
         )
         self.conn.commit()
@@ -238,12 +242,20 @@ class Orchestrator:
             return Path(self.orch_config.report_dir).expanduser()
         return self._vault_root / "reports"
 
+    def _find_workflow(self, intent: str) -> WorkflowConfig | None:
+        """Find a workflow matching the given intent."""
+        for wf in self.config.workflows:
+            if wf.matches_intent(intent):
+                return wf
+        return None
+
     async def submit(
         self,
         prompt: str,
         project: str | None = None,
         reply_to: str | None = None,
         project_path: str | None = None,
+        intent: str | None = None,
     ) -> str:
         """Submit a task to be executed by Claude Code CLI.
 
@@ -280,6 +292,7 @@ class Orchestrator:
             project_path=project_path,
             reply_to=reply_to,
             prompt=prompt,
+            intent=intent,
             created_at=now,
             updated_at=now,
         )
@@ -306,6 +319,7 @@ class Orchestrator:
         project: str | None = None,
         reply_to: str | None = None,
         project_path: str | None = None,
+        intent: str | None = None,
     ) -> str:
         """Synchronous wrapper for submit() — safe to call from any thread.
 
@@ -319,6 +333,7 @@ class Orchestrator:
                 project=project,
                 reply_to=reply_to,
                 project_path=project_path,
+                intent=intent,
             ),
             self._loop,
         )
@@ -504,34 +519,54 @@ class Orchestrator:
     def _write_report(
         self, task: TaskStatus, output: str, session_id: str
     ) -> Path | None:
-        """Write a completed task's output as an Obsidian markdown report."""
+        """Write a completed task's output to all configured destinations.
+
+        If a workflow is defined for this task's intent, write to each output
+        destination in the format specified. Otherwise fall back to the default
+        markdown report in the vault.
+
+        Returns the primary report path (first output written).
+        """
         if not output.strip():
             return None
-
-        self._report_dir.mkdir(parents=True, exist_ok=True)
 
         now = datetime.now(timezone.utc)
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H:%M")
 
-        # Build a filesystem-safe slug from the first line of output or prompt
         slug_source = task.prompt[:60] if task.prompt else task.task_id
         slug = self._slugify(slug_source)
 
-        filename = f"{date_str}-{slug}.md"
-        path = self._report_dir / filename
+        # Build the markdown content (used as source for all formats)
+        md_content = self._build_report_markdown(
+            task, output, session_id, slug_source, date_str, time_str
+        )
 
-        # Avoid overwriting — append counter if needed
-        counter = 1
-        while path.exists():
-            counter += 1
-            filename = f"{date_str}-{slug}-{counter}.md"
-            path = self._report_dir / filename
+        # Find matching workflow for multi-destination output
+        workflow = self._find_workflow(task.intent) if task.intent else None
 
+        if workflow and workflow.outputs:
+            return self._write_workflow_outputs(
+                workflow, task, md_content, output, slug, date_str
+            )
+
+        # Default: write markdown to the report dir
+        return self._write_single_report(self._report_dir, slug, date_str, md_content)
+
+    def _build_report_markdown(
+        self,
+        task: TaskStatus,
+        output: str,
+        session_id: str,
+        slug_source: str,
+        date_str: str,
+        time_str: str,
+    ) -> str:
+        """Build the standard markdown report content."""
         lines = [
             "---",
             f'title: "Report: {slug_source}"',
-            f"date: {now.strftime('%Y-%m-%dT%H:%M:%S')}",
+            f"date: {date_str}T{time_str}:00",
             "type: orchestrator_report",
             f"task_id: {task.task_id}",
             f"session_id: {session_id}",
@@ -556,6 +591,8 @@ class Orchestrator:
             lines.append(f"> **Reply to:** {task.reply_to}")
         lines.extend([
             "",
+            f"*To reply to this report, reference task **{task.task_id}***",
+            "",
             "## Output",
             "",
             output,
@@ -567,10 +604,83 @@ class Orchestrator:
             task.prompt,
             "",
         ])
+        return "\n".join(lines)
 
-        path.write_text("\n".join(lines), encoding="utf-8")
+    def _write_single_report(
+        self, dest_dir: Path, slug: str, date_str: str, content: str
+    ) -> Path:
+        """Write a single report file, avoiding overwrites."""
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{date_str}-{slug}.md"
+        path = dest_dir / filename
+
+        counter = 1
+        while path.exists():
+            counter += 1
+            filename = f"{date_str}-{slug}-{counter}.md"
+            path = dest_dir / filename
+
+        path.write_text(content, encoding="utf-8")
         logger.info("Report written to %s", path)
         return path
+
+    def _write_workflow_outputs(
+        self,
+        workflow: WorkflowConfig,
+        task: TaskStatus,
+        md_content: str,
+        raw_output: str,
+        slug: str,
+        date_str: str,
+    ) -> Path | None:
+        """Write output to all destinations defined in the workflow."""
+        primary_path = None
+        destinations = getattr(self.config, "destinations", {})
+
+        for wo in workflow.outputs:
+            dest_base = destinations.get(wo.destination)
+            if not dest_base:
+                logger.warning(
+                    "Workflow '%s' references unknown destination '%s', skipping",
+                    workflow.name, wo.destination,
+                )
+                continue
+
+            dest_dir = Path(dest_base).expanduser()
+            if wo.path:
+                dest_dir = dest_dir / wo.path
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+            fmt = wo.format.lower()
+            if fmt == "html":
+                title = task.prompt[:80] if task.prompt else f"Report {task.task_id}"
+                content = md_to_html(md_content, title=title)
+                ext = ".html"
+            elif fmt == "txt":
+                # Strip frontmatter for plain text
+                import re
+                content = re.sub(r"^---\n.*?\n---\n?", "", md_content, count=1, flags=re.DOTALL)
+                ext = ".txt"
+            else:
+                content = md_content
+                ext = ".md"
+
+            filename = f"{date_str}-{slug}{ext}"
+            path = dest_dir / filename
+
+            counter = 1
+            while path.exists():
+                counter += 1
+                filename = f"{date_str}-{slug}-{counter}{ext}"
+                path = dest_dir / filename
+
+            path.write_text(content, encoding="utf-8")
+            logger.info("Workflow output written to %s (%s)", path, fmt)
+
+            if primary_path is None:
+                primary_path = path
+
+        return primary_path
 
     # ------------------------------------------------------------------
     # Helpers
@@ -585,8 +695,8 @@ class Orchestrator:
 
     @staticmethod
     def _generate_task_id() -> str:
-        """Generate a short, human-friendly task ID."""
-        return uuid_mod.uuid4().hex[:8].upper()
+        """Generate a short, human-friendly task ID (4 hex chars)."""
+        return uuid_mod.uuid4().hex[:4].upper()
 
     @staticmethod
     def _slugify(text: str) -> str:
